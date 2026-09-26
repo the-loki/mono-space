@@ -44,8 +44,11 @@ describe('createEmbeddedAgent', () => {
       expect(names).toContain('monospace_act')
       expect(names).toContain('monospace_ledger_stats')
 
-      // 不可逆动作必须不在：给模型等于让它自己把密钥揭示掉。
+      // 揭示：不再有硬编码工具，但 agent 需要能打开那一单的页面（只开页面、不点击）。
+      expect(names).toContain('monospace_key_open')
       expect(names).not.toContain('monospace_key_reveal')
+
+      // 兑换仍是 L2，仍然不给模型。
       expect(names).not.toContain('monospace_key_redeem')
 
       // Pi 自带工具必须一个都没有（noTools: 'builtin'）。
