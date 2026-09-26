@@ -65,6 +65,19 @@ export interface MonoSpaceTaskResult {
   note: string
 }
 
+/** 同步报告摘要（渲染进程只关心这几项）。 */
+export interface MonoSpaceSyncSummary {
+  orderCount: number
+  mappedOrderCount: number
+  skippedOrderCount: number
+  keyCount: number
+  snapshotId: number
+}
+
+export type MonoSpaceSyncResult =
+  | { ok: true; report: MonoSpaceSyncSummary & Record<string, unknown> }
+  | { ok: false; reason: 'not-logged-in' | 'error'; message: string }
+
 export interface MonoSpaceApi {
   ping(message: string): Promise<string>
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
@@ -72,6 +85,10 @@ export interface MonoSpaceApi {
     list(query?: MonoSpaceLedgerKeyQuery): Promise<MonoSpaceLedgerKeyPage>
     count(query?: MonoSpaceLedgerKeyQuery): Promise<number>
     export(format: 'json' | 'csv', query?: MonoSpaceLedgerKeyQuery): Promise<string>
+  }
+  /** 只读同步：拉 Humble 订单并增量入库。 */
+  sync: {
+    run(): Promise<MonoSpaceSyncResult>
   }
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {

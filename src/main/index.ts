@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { initBrowser } from './browser'
 import { registerLedgerIpc } from './ipc/ledger'
+import { registerSyncIpc } from './ipc/sync'
 import { registerTaskIpc } from './ipc/tasks'
 
 // 主进程是 ESM（package.json "type":"module"），没有 __dirname，需自行推导。
@@ -42,6 +43,9 @@ app.whenReady().then(() => {
 
   // 台账列表 / 计数 / 导出（见 #23；列表不含兑换码明文）。
   registerLedgerIpc()
+
+  // 只读同步（见 #28：验收发现同步缺入口）。
+  registerSyncIpc()
 
   // 单条揭示 / 兑换动作（见 #25 / #26）。
   registerTaskIpc()

@@ -22,6 +22,7 @@ export function LedgerPage(): JSX.Element {
   const [viewportHeight, setViewportHeight] = useState(FALLBACK_VIEWPORT_HEIGHT)
   const [exportNote, setExportNote] = useState('')
   const [actionNote, setActionNote] = useState('')
+  const [syncing, setSyncing] = useState(false)
   const [busyKeyId, setBusyKeyId] = useState<number | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
 
@@ -97,6 +98,25 @@ export function LedgerPage(): JSX.Element {
     [reload],
   )
 
+  // 只读同步：拉 Humble 订单增量入库（GET 不受 CF 阻挡，走 store 会话 cookie）。
+  const handleSync = useCallback(async () => {
+    setSyncing(true)
+    setActionNote('同步中…（未登录时会提示去内嵌窗口登录）')
+    try {
+      const result = await window.api.sync.run()
+      setActionNote(
+        result.ok
+          ? `同步完成：订单 ${result.report.orderCount}（入库 ${result.report.mappedOrderCount}，跳过 ${result.report.skippedOrderCount}），key ${result.report.keyCount}`
+          : `同步失败：${result.message}`,
+      )
+    } catch (cause: unknown) {
+      setActionNote(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setSyncing(false)
+      reload()
+    }
+  }, [reload])
+
   const isEmpty = data.status === 'ready' && data.total === 0
 
   return (
@@ -130,6 +150,15 @@ export function LedgerPage(): JSX.Element {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="ledger-sync"
+            disabled={syncing}
+            onClick={() => void handleSync()}
+            className="rounded bg-emerald-800 px-2 py-1 text-emerald-50 text-sm hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {syncing ? '同步中…' : '同步'}
+          </button>
           <button
             type="button"
             data-testid="ledger-export-json"
