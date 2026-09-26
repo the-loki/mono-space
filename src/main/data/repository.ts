@@ -258,6 +258,11 @@ export class LedgerRepository {
       ).run(
         nullable(key.name),
         nullable(key.keyType),
+        // **这个值曾经漏了**：SET 里加了 platform 列但这里没加，而 node:sqlite 在
+        // 「参数少于占位符」时**不报错**、悄悄绑 NULL —— 于是整串参数错位，
+        // 最后一个 `WHERE id = ?` 拿到 NULL（`WHERE id = NULL` 永不匹配），
+        // UPDATE 静默变成空操作：**重读一单什么都不更新**（平台一直是旧值）。
+        nullable(key.platform),
         nullable(key.revealStatus),
         nullable(key.revealedAt),
         nullable(key.redeemStatus),

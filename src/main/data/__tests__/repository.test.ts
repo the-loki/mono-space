@@ -58,6 +58,25 @@ describe('仓储增量写入', () => {
     repo.close()
   })
 
+  it('重读同一 key 时，**变了的值必须写进去**（旧值不能被挡住）', () => {
+    // 这条测的是「UPDATE 真的执行了」——上面那条只断言「值被保留」，
+    // 而**空操作也满足「值被保留」**，所以它抓不到 `upsertKey` 的 UPDATE 悄悄变成空操作
+    // （SET 里加了 platform 列、run() 却没传这个参数 → node:sqlite 静默绑 NULL →
+    //  最后一个 WHERE id = ? 拿到 NULL → 一行都不匹配）。实测重读一单什么都不更新的 bug 就是它。
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([sampleOrder()])
+
+    const reread = sampleOrder()
+    reread.bundles[0]?.keys[0] && (reread.bundles[0].keys[0].platform = 'fab')
+    reread.bundles[0]?.keys[0] && (reread.bundles[0].keys[0].name = '改名后的 Unity 资产 A')
+    repo.applyOrderSync([reread])
+
+    const after = repo.listKeys().items.find((item) => item.keyRemoteId === 'key-u1')
+    expect(after?.platform).toBe('fab')
+    expect(after?.name).toBe('改名后的 Unity 资产 A')
+    repo.close()
+  })
+
   it('增量更新保留已有状态并写入新字段', () => {
     const repo = openLedger({ path: ':memory:' })
     repo.applyOrderSync([sampleOrder()])
