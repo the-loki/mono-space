@@ -1,10 +1,8 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { createMcpHost } from './agent/host'
 import { initBrowser } from './browser'
-import { runGpuGuard, STABLE_MS } from './gpu-guard'
 import { registerAgentIpc } from './ipc/agent'
 import { registerLedgerIpc } from './ipc/ledger'
 import { registerSyncIpc } from './ipc/sync'
@@ -38,22 +36,17 @@ function createWindow(): BrowserWindow {
   return window
 }
 
-// GPU 兜底要在 app ready **之前**决定是否加 --disable-gpu（晚了 Chromium 已经初始化）。
-const gpuSentinelPath = join(app.getPath('userData'), 'gpu-crash-sentinel')
-const gpuGuard = runGpuGuard({
-  sentinelExists: () => existsSync(gpuSentinelPath),
-  writeSentinel: () => writeFileSync(gpuSentinelPath, new Date().toISOString(), 'utf8'),
-  removeSentinel: () => rmSync(gpuSentinelPath, { force: true }),
-  disableGpu: () => app.commandLine.appendSwitch('disable-gpu'),
-})
-if (gpuGuard.recovered) {
-  console.warn('MonoSpace：上次启动疑似 GPU 崩溃，本次退回软件渲染（稳定后会自动恢复）。')
-}
+// 无条件禁用硬件加速（必须在 app ready **之前**，晚了 Chromium 已经初始化）。
+//
+// 为什么不是「先崩一次再降级」：本机 GPU 进程**根本起不来**，每次启动都是
+//   GPU process launch failed: error_code=1002
+//   FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc:417] GPU process isn't usable. Goodbye.
+// 然后直接退出（对「装完即启动」是硬伤：双击图标窗口压根不出来）。
+// 原先写了哨兵式的崩溃恢复，但既然这台机器每次都崩，那层优雅就是多余的开销：
+// 直接软件渲染，界面是普通列表/表单，代价无感。
+app.commandLine.appendSwitch('disable-gpu')
 
 app.whenReady().then(() => {
-  // 稳定跑过一段时间就清哨兵，下次恢复硬件加速。
-  setTimeout(() => gpuGuard.markHealthy(), STABLE_MS).unref()
-
   // 最小连通性探针：证明 ESM 主进程 ↔ sandboxed preload ↔ 渲染进程的往返成立。
   ipcMain.handle('ping', (_event, message: string) => `pong:${message}`)
 
