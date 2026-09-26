@@ -9,7 +9,8 @@
  * 权限分层沿用 `#13`：只读自动放行；写入自动但留痕；不可逆写入必须人在环路。
  */
 import { z } from 'zod'
-import type { CompactAxSnapshot } from '../browser/ax-snapshot'
+import type { BrowserHost } from './host-contract'
+import { createBrowserTools } from './tools-browser'
 
 /** L0 只读：台账统计。 */
 export interface LedgerStats {
@@ -64,8 +65,11 @@ export interface KeyUpsertEntry {
   note?: string
 }
 
-/** 工具背后的宿主。全部由主进程实现（持有 store 会话与台账）。 */
-export interface McpHost {
+/**
+ * 工具背后的宿主。全部由主进程实现（持有 store 会话与台账）。
+ * 浏览器能力来自 `host-contract.ts` 的 `BrowserHost`（Chrome MCP 的忠实镜像）。
+ */
+export interface McpHost extends BrowserHost {
   ledgerStats(): Promise<LedgerStats>
   ledgerQuery(input: {
     view?: string
@@ -74,12 +78,6 @@ export interface McpHost {
     offset?: number
   }): Promise<LedgerRow[]>
   keyContext(keyId: number): Promise<(LedgerRow & { redeemCode?: string | null }) | null>
-  browserStatus(): Promise<BrowserNavResult | null>
-  browserGoto(url: string): Promise<BrowserNavResult>
-  browserSnapshot(options?: { maxNodes?: number; maxChars?: number }): Promise<CompactAxSnapshot>
-  browserScreenshot(): Promise<{ path: string }>
-  /** 进入某个 key 的页面并读取（用户要的「逐个 key 读」）。 */
-  keyPageRead(keyId: number): Promise<{ url: string; snapshot: CompactAxSnapshot }>
   ordersSync(): Promise<unknown>
   keysUpsert(entries: KeyUpsertEntry[]): Promise<UpsertResult>
   keyReveal(keyId: number): Promise<ActionOutcome>
@@ -101,7 +99,7 @@ export interface McpToolSpec {
 export const TOOL_PREFIX = 'monospace_'
 
 /** 浏览器类工具描述里统一加上这句，避免与其它浏览器 MCP 混淆。 */
-const BROWSER_SCOPE =
+export const BROWSER_SCOPE =
   '作用范围：**MonoSpace 应用内置的浏览会话**（登录态在应用私有分区，不是系统 Chrome，也不是其它浏览器 MCP 的页面）。'
 
 /** 建全部工具。 */
@@ -157,53 +155,6 @@ export function createMcpTools(host: McpHost): McpToolSpec[] {
       },
     },
     {
-      name: `${TOOL_PREFIX}browser_status`,
-      title: 'MonoSpace 内置浏览器状态',
-      description: `读取 MonoSpace 内置浏览器当前页面 URL 与标题。${BROWSER_SCOPE} 只读。`,
-      layer: 'L0',
-      inputSchema: {},
-      run: () => host.browserStatus(),
-    },
-    {
-      name: `${TOOL_PREFIX}browser_goto`,
-      title: 'MonoSpace 内置浏览器导航',
-      description: `把 MonoSpace 内置浏览器导航到指定 URL 并等加载完成。${BROWSER_SCOPE} 导航由 App 执行（agent 不直接点页面）。`,
-      layer: 'L0',
-      inputSchema: { url: z.string().url() },
-      run: (input) => host.browserGoto(input.url as string),
-    },
-    {
-      name: `${TOOL_PREFIX}browser_snapshot`,
-      title: 'MonoSpace 当前页面无障碍树',
-      description: `把 MonoSpace 内置浏览器当前页面的无障碍树读成紧凑文本（已剪枝，适合模型阅读）。${BROWSER_SCOPE} 只读，是读页面的主手段。`,
-      layer: 'L0',
-      inputSchema: {
-        maxNodes: z.number().int().positive().optional(),
-        maxChars: z.number().int().positive().optional(),
-      },
-      run: (input) =>
-        host.browserSnapshot({
-          maxNodes: input.maxNodes as number | undefined,
-          maxChars: input.maxChars as number | undefined,
-        }),
-    },
-    {
-      name: `${TOOL_PREFIX}browser_screenshot`,
-      title: 'MonoSpace 内置浏览器截图',
-      description: `给 MonoSpace 内置浏览器当前页面截图，落盘并返回路径（供人核对）。${BROWSER_SCOPE} 只读。`,
-      layer: 'L0',
-      inputSchema: {},
-      run: () => host.browserScreenshot(),
-    },
-    {
-      name: `${TOOL_PREFIX}key_page_read`,
-      title: 'MonoSpace 进入某个 key 的页面并读取',
-      description: `让 MonoSpace 内置浏览器**进入指定 key 的页面**并返回该页面的无障碍树快照（用户的「逐个 key 读」）。${BROWSER_SCOPE} 只读。`,
-      layer: 'L0',
-      inputSchema: { keyId: z.number().int().positive() },
-      run: (input) => host.keyPageRead(input.keyId as number),
-    },
-    {
       name: `${TOOL_PREFIX}orders_sync`,
       title: 'MonoSpace 同步订单（接口）',
       description:
@@ -251,5 +202,6 @@ export function createMcpTools(host: McpHost): McpToolSpec[] {
       inputSchema: { keyId: z.number().int().positive() },
       run: (input) => host.keyRedeem(input.keyId as number),
     },
+    ...createBrowserTools(host),
   ]
 }

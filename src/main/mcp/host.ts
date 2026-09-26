@@ -1,118 +1,111 @@
 /**
- * `McpHost` 的真实实现（`#31`）：把 MCP 工具接到台账、内置浏览器与既有动作链路。
+ * MCP 宿主实现（`#31`）：把 MonoSpace 的领域能力与**忠实镜像的浏览器能力**接起来。
  *
- * 这里**只做转发与适配**，业务决策都在已有模块里：
- * - 台账 → `ledgerRepository()`（`#21`）
- * - 同步 → `runHumbleSync`（`#22`/`#28`）
- * - 揭示/兑换 → `runReveal`/`runRedeem`（`#25`/`#26`）
- * - 页面 → `snapshotPageAx`/`capturePage`（`#24`/`#30`）
+ * 领域部分（台账 / 同步 / 揭示 / 兑换）是 App 自有的价值；
+ * 浏览器部分是 Chrome MCP 的镜像，唯一差别是作用域限定在内置会话窗口。
+ *
+ * `uid` → 元素的解析在这里完成：**只认最近一次快照**给出的引用，
+ * 页面变了就得重新取快照（与 Chrome MCP 的「always use the latest snapshot」一致）。
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
+import { snapshotPageAx } from '../browser/ax-snapshot'
+import type { AxRef } from '../browser/ax-tree'
 import {
-  type CompactAxSnapshot,
-  capturePage,
-  snapshotPageAx,
-  toCompactSnapshot,
-} from '../browser/ax-snapshot'
-import { getStoreSession } from '../browser/store-session'
-import { openStoreView } from '../browser/store-view'
+  clickAt,
+  clickElement,
+  dragElement,
+  fillElement,
+  handleDialog,
+  hoverElement,
+  pressKeyCombo,
+  typeText,
+  uploadFile,
+} from '../browser/input-actions'
+import {
+  getCssStyles,
+  getNetworkRequest,
+  listConsoleMessages,
+  listNetworkRequests,
+  getConsoleMessage as readConsoleMessage,
+  takeScreenshot,
+} from '../browser/introspection'
+import {
+  closePage,
+  emulate,
+  getPage,
+  getSelectedPageId,
+  listPages,
+  navigatePage,
+  newPage,
+  resizePage,
+  selectPage,
+  waitForText,
+} from '../browser/pages'
+import { startTrace, stopTrace } from '../browser/performance'
+import { evaluateScript } from '../browser/script'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
 import { runRedeem, runReveal } from '../ipc/tasks'
-import type {
-  ActionOutcome,
-  BrowserNavResult,
-  KeyUpsertEntry,
-  LedgerRow,
-  LedgerStats,
-  McpHost,
-  UpsertResult,
-} from './tools'
+import type { BrowserActionResult, SnapshotResult } from './host-contract'
+import type { LedgerRow, LedgerStats, McpHost, UpsertResult } from './tools'
 
-/** Humble 密钥页（所有 key 的入口）。 */
-export const HUMBLE_KEYS_PAGE = 'https://www.humblebundle.com/home/keys'
+/** 页面主体少于这么多节点时，认为还只是外壳（页眉页脚），需要再等一会儿。 */
+const MIN_CONTENT_NODES = 40
 
-/**
- * 单个 key 的页面 URL。
- *
- * ⚠️ **校准点**：Humble 的 key 详情页 URL 形态未经真实页面确认（`#31` DoD 的实测项）。
- * 目前用 `?order=<gamekey>#<machine_name>` 的锚点形式——即便 URL 形态不对，
- * 落到密钥页也不会出错，只是需要使用者据此校准（见 README/票内说明）。
- */
-export function keyPageUrl(input: { orderRemoteId: string; keytype: string }): string {
-  return `${HUMBLE_KEYS_PAGE}?order=${encodeURIComponent(input.orderRemoteId)}#${encodeURIComponent(
-    input.keytype,
-  )}`
-}
+/** 等页面主体渲染出来，最多等这么久。 */
+const CONTENT_WAIT_MS = 8_000
 
-/** 审计文件（L1 写入留痕，`#13` §2.3）。 */
-interface AuditEntry {
-  at: string
-  tool: string
-  keyIds: number[]
-  written: number
-}
-
-export interface McpHostDeps {
-  /** 覆盖：测试用假窗口。 */
-  getWindow?: () => Promise<BrowserWindow>
-}
-
-/** 懒开一个内置浏览器窗口并复用。 */
-async function ensureWindow(cached: { value: BrowserWindow | null }): Promise<BrowserWindow> {
-  if (cached.value && !cached.value.isDestroyed()) return cached.value
-  const view = await openStoreView(getStoreSession(), HUMBLE_KEYS_PAGE, { show: true })
-  const { BrowserWindow } = await import('electron')
-  const window = BrowserWindow.fromId(view.id)
-  if (!window) throw new Error('内置浏览器窗口打开失败')
-  cached.value = window
-  return window
-}
-
-/** 等页面真正渲染出可访问性内容（SPA 的 dom-ready 之后还要等一帧几）。 */
-async function waitForAxContent(
-  window: BrowserWindow,
-  options: { minNodes?: number; timeoutMs?: number } = {},
-): Promise<void> {
-  // 注意：页面**外壳**（导航/页脚）就有二三十个节点，所以阈值必须高于它，
-  // 否则会「外壳刚出来就返回」，拿到一张没有列表内容的空壳（联调踩到）。
-  const minNodes = options.minNodes ?? 80
-  const deadline = Date.now() + (options.timeoutMs ?? 20_000)
-  for (;;) {
-    try {
-      const snapshot = await snapshotPageAx(window, { maxNodes: 600 })
-      if (snapshot.nodeCount >= minNodes) return
-    } catch {
-      // 还没加载完 / 取不到，继续等
-    }
-    if (Date.now() > deadline) return
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
-}
-
-/**
- * 脱敏：页面标题里常带登录账号邮箱（联调实测 `Humble Bundle - <邮箱>`）。
- * 台账/日志/回执都不该扩散这种信息，统一打码。
- */
+/** 账号邮箱脱敏：页面标题与 a11y 正文里都会带（联调实测）。 */
 export function redactAccountTitle(title: string): string {
   return title.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '<账号已脱敏>')
 }
 
-/** 同样脱敏的文本处理：a11y 树的 RootWebArea 名字里也会带账号邮箱（联调实测）。 */
+/** 同样脱敏的文本处理：a11y 树的 RootWebArea 名字里也会带账号邮箱。 */
 export function redactSnapshotText(text: string): string {
   return redactAccountTitle(text)
 }
 
+interface AuditEntry {
+  at: string
+  tool: string
+  keyIds?: number[]
+  written?: number
+  detail?: unknown
+}
+
 /** 建 MCP 宿主。 */
-export function createMcpHost(deps: McpHostDeps = {}): McpHost {
+export function createMcpHost(): McpHost {
   const repository = ledgerRepository()
   const artifactsDir = join(app.getPath('userData'), 'mcp-artifacts')
   const auditPath = join(app.getPath('userData'), 'mcp-audit.jsonl')
-  const cachedWindow: { value: BrowserWindow | null } = { value: null }
 
-  const getWindow = deps.getWindow ?? (() => ensureWindow(cachedWindow))
+  /** 每个页面的「最新快照引用」+ 快照序号（uid 前缀）。 */
+  const refsByPage = new Map<number, Map<string, AxRef>>()
+  const uidCounter = new Map<number, number>()
+  /** 已经挂过导航监听（导航时清引用）的窗口。 */
+  const watchedWindows = new WeakSet<BrowserWindow>()
+
+  /**
+   * 导航会让引用失效——**不只在 App 自己导航时**，页面里点个链接跳走同样会。
+   * 联调踩到：只在自己导航时清引用，结果拿旧 uid 又点中了新页面上的同名位置。
+   */
+  function watchNavigation(window: BrowserWindow): void {
+    if (watchedWindows.has(window)) return
+    watchedWindows.add(window)
+    const clear = (): void => {
+      refsByPage.delete(window.id)
+    }
+    window.webContents.on('did-navigate', clear)
+    window.webContents.on('did-navigate-in-page', clear)
+  }
+
+  async function appendAudit(entry: AuditEntry): Promise<string> {
+    await mkdir(join(artifactsDir, '..'), { recursive: true })
+    await writeFile(auditPath, `${JSON.stringify(entry)}\n`, { flag: 'a', encoding: 'utf8' })
+    return `${entry.at}#${entry.tool}`
+  }
 
   function toRow(item: {
     id: number
@@ -134,17 +127,109 @@ export function createMcpHost(deps: McpHostDeps = {}): McpHost {
     }
   }
 
-  async function appendAudit(entry: AuditEntry): Promise<string> {
-    await mkdir(join(auditPath, '..'), { recursive: true })
-    await writeFile(auditPath, `${JSON.stringify(entry)}\n`, { flag: 'a', encoding: 'utf8' })
-    return `${entry.at}#${entry.tool}`
+  /** 页面标题统一脱敏后返回。 */
+  function titleOf(window: BrowserWindow): string {
+    return redactAccountTitle(window.webContents.getTitle())
+  }
+
+  function pageInfoOf(window: BrowserWindow) {
+    const selected = getSelectedPageId() === window.id
+    return {
+      pageId: window.id,
+      url: window.webContents.getURL(),
+      title: titleOf(window),
+      selected,
+    }
+  }
+
+  function nextUidPrefix(pageId: number): number {
+    const next = (uidCounter.get(pageId) ?? 0) + 1
+    uidCounter.set(pageId, next)
+    return next
+  }
+
+  /** 等到页面主体渲染出来（外壳不算）。 */
+  async function waitForAxContent(pageId: number): Promise<void> {
+    const window = getPage(pageId)
+    const deadline = Date.now() + CONTENT_WAIT_MS
+    while (Date.now() < deadline) {
+      const probe = await snapshotPageAx(window, { maxNodes: 60 }).catch(() => null)
+      if (probe && probe.nodeCount >= MIN_CONTENT_NODES) return
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+
+  /** 取快照并把引用登记为「最新」（后续动作只认这一份）。 */
+  async function takeSnapshotFor(
+    pageId: number,
+    options: { verbose?: boolean; filePath?: string } = {},
+  ): Promise<SnapshotResult & { path?: string }> {
+    const window = getPage(pageId)
+    watchNavigation(window)
+    // 导航后立刻取会拿到空壳（外壳就有 20~30 个节点），先探一下再正式取。
+    const probe = await snapshotPageAx(window, { maxNodes: 60 }).catch(() => null)
+    if (!probe || probe.nodeCount < MIN_CONTENT_NODES) await waitForAxContent(pageId)
+
+    const prefix = nextUidPrefix(pageId)
+    const snapshot = await snapshotPageAx(window, {
+      uidPrefix: prefix,
+      ...(options.verbose ? { maxNodes: 4_000, maxChars: 400_000 } : {}),
+    })
+    refsByPage.set(pageId, new Map(snapshot.refs.map((ref) => [ref.uid, ref])))
+
+    const result: SnapshotResult & { path?: string } = {
+      pageId,
+      url: snapshot.url,
+      title: redactAccountTitle(snapshot.title),
+      text: redactSnapshotText(snapshot.text),
+      nodeCount: snapshot.nodeCount,
+      truncated: snapshot.truncated,
+    }
+    if (options.filePath) {
+      await writeFile(options.filePath, result.text, 'utf8')
+      return { ...result, text: '', path: options.filePath }
+    }
+    return result
+  }
+
+  /** uid → 引用；只认最近一次快照。 */
+  function refOf(pageId: number, uid: string): AxRef {
+    const ref = refsByPage.get(pageId)?.get(uid)
+    if (!ref) {
+      throw new Error(
+        `uid ${uid} 不在该页面的最新快照里（页面可能已经变化）。请先调用 monospace_take_snapshot 重新取快照。`,
+      )
+    }
+    return ref
+  }
+
+  /** 动作返回：按需附带一次新快照。 */
+  async function actionResult(
+    pageId: number,
+    detail: string,
+    includeSnapshot?: boolean,
+  ): Promise<BrowserActionResult> {
+    const window = getPage(pageId)
+    const result: BrowserActionResult = {
+      pageId,
+      url: window.webContents.getURL(),
+      title: titleOf(window),
+      detail,
+    }
+    if (includeSnapshot) result.snapshot = await takeSnapshotFor(pageId)
+    return result
+  }
+
+  /** 导航会让旧引用失效，清掉免得误点。 */
+  function invalidateRefs(pageId: number): void {
+    refsByPage.delete(pageId)
   }
 
   return {
+    // —————————————————————— MonoSpace 领域能力 ——————————————————————
     async ledgerStats(): Promise<LedgerStats> {
       const total = repository.countKeys({ view: 'all' })
       const byEngine: Record<string, number> = {}
-      // 逐页扫一遍统计引擎（952 条量级，代价可接受）。
       const pageSize = 500
       for (let offset = 0; offset < total; offset += pageSize) {
         const page = repository.listKeys({ view: 'all', limit: pageSize, offset })
@@ -182,94 +267,14 @@ export function createMcpHost(deps: McpHostDeps = {}): McpHost {
       return { ...toRow(detail), redeemCode: detail.redeemCode }
     },
 
-    async browserStatus() {
-      const window = await getWindow()
-      return {
-        url: window.webContents.getURL(),
-        title: redactAccountTitle(window.webContents.getTitle()),
-        status: 200,
-      }
-    },
-
-    async browserGoto(url): Promise<BrowserNavResult> {
-      const window = await getWindow()
-      // 等 did-finish-load（而不是 did-navigate）：SPA 到这一步才有可读内容。
-      const status = await new Promise<number>((resolve) => {
-        let settled = false
-        const finish = (code: number): void => {
-          if (settled) return
-          settled = true
-          resolve(code)
-        }
-        window.webContents.once('did-finish-load', () => finish(200))
-        window.webContents.once('did-fail-load', (_e, code) => finish(code === -3 ? 200 : code))
-        window.loadURL(url).catch(() => finish(-1))
-      })
-      await waitForAxContent(window)
-      return {
-        url: window.webContents.getURL(),
-        title: redactAccountTitle(window.webContents.getTitle()),
-        status,
-      }
-    },
-
-    async browserSnapshot(options) {
-      const window = await getWindow()
-      // 若页面主体还没渲染，先等（外壳不算「有内容」）。
-      const probe = await snapshotPageAx(window, { maxNodes: 60 }).catch(() => null)
-      if (!probe || probe.nodeCount < 40) await waitForAxContent(window)
-      const snapshot = await snapshotPageAx(window, options ?? {})
-      return {
-        ...toCompactSnapshot(snapshot),
-        title: redactAccountTitle(snapshot.title),
-        text: redactSnapshotText(snapshot.text),
-      }
-    },
-
-    async browserScreenshot() {
-      const window = await getWindow()
-      await mkdir(artifactsDir, { recursive: true })
-      return capturePage(window, join(artifactsDir, `page-${Date.now()}.png`))
-    },
-
-    async keyPageRead(keyId) {
-      const detail = repository.getKey(keyId)
-      if (!detail) throw new Error(`台账里没有 keyId=${keyId}`)
-      const [keytype] = detail.keyRemoteId.split('#')
-      const url = keyPageUrl({
-        orderRemoteId: detail.orderRemoteId,
-        keytype: keytype || detail.bundleRemoteId,
-      })
-      const nav = await this.browserGoto(url)
-      const window = await getWindow()
-      const snapshot = await snapshotPageAx(window, {})
-      return {
-        url: nav.url,
-        snapshot: {
-          ...toCompactSnapshot(snapshot),
-          title: redactAccountTitle(snapshot.title),
-          text: redactSnapshotText(snapshot.text),
-        },
-      }
-    },
-
     async ordersSync() {
-      const result = await runHumbleSync({
-        client: createDefaultSyncClient(),
-        repository,
-      })
-      await appendAudit({
-        at: new Date().toISOString(),
-        tool: 'orders_sync',
-        keyIds: [],
-        written: result.ok
-          ? result.report.write.keys.inserted + result.report.write.keys.updated
-          : 0,
-      })
+      const client = createDefaultSyncClient()
+      const result = await runHumbleSync({ repository, client })
+      await appendAudit({ at: new Date().toISOString(), tool: 'orders_sync', detail: result })
       return result
     },
 
-    async keysUpsert(entries: KeyUpsertEntry[]): Promise<UpsertResult> {
+    async keysUpsert(entries): Promise<UpsertResult> {
       const at = new Date().toISOString()
       let written = 0
       for (const entry of entries) {
@@ -286,35 +291,225 @@ export function createMcpHost(deps: McpHostDeps = {}): McpHost {
       return { written, auditId }
     },
 
-    async keyReveal(keyId): Promise<ActionOutcome> {
-      const result = await runReveal(keyId)
+    async keyReveal(keyId) {
+      const outcome = await runReveal(keyId)
       await appendAudit({
         at: new Date().toISOString(),
         tool: 'key_reveal',
         keyIds: [keyId],
         written: 1,
       })
-      return result
+      return outcome
     },
 
-    async keyRedeem(keyId): Promise<ActionOutcome> {
-      const result = await runRedeem(keyId)
+    async keyRedeem(keyId) {
+      const outcome = await runRedeem(keyId)
       await appendAudit({
         at: new Date().toISOString(),
         tool: 'key_redeem',
         keyIds: [keyId],
         written: 1,
       })
+      return outcome
+    },
+
+    // —————————————————————— 页面管理（navigation） ——————————————————————
+    async browserListPages() {
+      return listPages()
+    },
+
+    async browserSelectPage(pageId, options) {
+      return selectPage(pageId, options ?? {})
+    },
+
+    async browserNewPage(url, options) {
+      return newPage(url, options ?? {})
+    },
+
+    async browserClosePage(pageId) {
+      await closePage(pageId)
+      refsByPage.delete(pageId)
+      uidCounter.delete(pageId)
+      return { closed: pageId, pages: listPages() }
+    },
+
+    async browserNavigatePage(pageId, options) {
+      invalidateRefs(pageId)
+      return navigatePage(pageId, options)
+    },
+
+    async browserWaitFor(pageId, texts, timeout) {
+      return waitForText(pageId, texts, timeout)
+    },
+
+    // —————————————————————— 仿真（emulation） ——————————————————————
+    async browserEmulate(pageId, options) {
+      await emulate(pageId, options)
+      return { pageId, applied: Object.keys(options) }
+    },
+
+    async browserResizePage(pageId, width, height) {
+      await resizePage(pageId, width, height)
+      return { pageId, width, height }
+    },
+
+    // —————————————————————— 快照 / 截图 ——————————————————————
+    browserTakeSnapshot: takeSnapshotFor,
+
+    async browserTakeScreenshot(pageId, options) {
+      const window = getPage(pageId)
+      const backendDOMNodeId = options?.uid
+        ? refOf(pageId, options.uid).backendDOMNodeId
+        : undefined
+      const shot = await takeScreenshot(window, {
+        ...(backendDOMNodeId === undefined ? {} : { backendDOMNodeId }),
+        ...(options?.filePath === undefined ? {} : { filePath: options.filePath }),
+        ...(options?.format === undefined ? {} : { format: options.format }),
+        ...(options?.fullPage === undefined ? {} : { fullPage: options.fullPage }),
+        ...(options?.quality === undefined ? {} : { quality: options.quality }),
+      })
+      return {
+        pageId,
+        format: shot.format,
+        bytes: shot.bytes,
+        ...(shot.path === undefined ? {} : { path: shot.path }),
+        ...(shot.data === undefined ? {} : { data: shot.data }),
+      }
+    },
+
+    // —————————————————————— 输入（input） ——————————————————————
+    async browserClick(pageId, uid, options) {
+      const ref = refOf(pageId, uid)
+      const box = await clickElement(getPage(pageId), ref.backendDOMNodeId, {
+        dblClick: options?.dblClick,
+      })
+      return actionResult(
+        pageId,
+        `点击了 ${ref.role}「${ref.name ?? ''}」，落点 (${Math.round(box.centerX)}, ${Math.round(box.centerY)})`,
+        options?.includeSnapshot,
+      )
+    },
+
+    async browserClickAt(pageId, x, y, options) {
+      await clickAt(getPage(pageId), x, y, { dblClick: options?.dblClick })
+      return actionResult(pageId, `在 (${x}, ${y}) 点击`, options?.includeSnapshot)
+    },
+
+    async browserHover(pageId, uid, options) {
+      const ref = refOf(pageId, uid)
+      await hoverElement(getPage(pageId), ref.backendDOMNodeId)
+      return actionResult(
+        pageId,
+        `悬停到 ${ref.role}「${ref.name ?? ''}」`,
+        options?.includeSnapshot,
+      )
+    },
+
+    async browserDrag(pageId, fromUid, toUid, options) {
+      const from = refOf(pageId, fromUid)
+      const to = refOf(pageId, toUid)
+      await dragElement(getPage(pageId), from.backendDOMNodeId, to.backendDOMNodeId)
+      return actionResult(
+        pageId,
+        `把 ${from.role}「${from.name ?? ''}」拖到 ${to.role}「${to.name ?? ''}」`,
+        options?.includeSnapshot,
+      )
+    },
+
+    async browserFill(pageId, uid, value, options) {
+      const ref = refOf(pageId, uid)
+      const filled = await fillElement(getPage(pageId), ref.backendDOMNodeId, value)
+      return actionResult(
+        pageId,
+        `填了 ${filled.tag}${filled.type ? `[type=${filled.type}]` : ''}「${ref.name ?? ''}」`,
+        options?.includeSnapshot,
+      )
+    },
+
+    async browserFillForm(pageId, elements, options) {
+      const window = getPage(pageId)
+      const done: string[] = []
+      for (const element of elements) {
+        const ref = refOf(pageId, element.uid)
+        await fillElement(window, ref.backendDOMNodeId, element.value)
+        done.push(`${ref.name ?? element.uid}=${element.value}`)
+      }
+      return actionResult(
+        pageId,
+        `批量填了 ${done.length} 项：${done.join('，')}`,
+        options?.includeSnapshot,
+      )
+    },
+
+    async browserTypeText(pageId, text, options) {
+      await typeText(getPage(pageId), text, { submitKey: options?.submitKey })
+      return actionResult(
+        pageId,
+        options?.submitKey ? `键入文本并以 ${options.submitKey} 结束` : '键入了文本',
+        false,
+      )
+    },
+
+    async browserPressKey(pageId, key, options) {
+      await pressKeyCombo(getPage(pageId), key)
+      return actionResult(pageId, `按下了 ${key}`, options?.includeSnapshot)
+    },
+
+    async browserUploadFile(pageId, uid, filePaths, options) {
+      const ref = refOf(pageId, uid)
+      await uploadFile(getPage(pageId), ref.backendDOMNodeId, filePaths)
+      return actionResult(pageId, `上传了 ${filePaths.length} 个文件`, options?.includeSnapshot)
+    },
+
+    async browserHandleDialog(pageId, action, promptText) {
+      await handleDialog(getPage(pageId), action, promptText)
+      return actionResult(pageId, `对话框已 ${action === 'accept' ? '接受' : '取消'}`)
+    },
+
+    // —————————————————————— 调试（debugging） ——————————————————————
+    async browserEvaluateScript(pageId, functionDeclaration, options) {
+      const result = await evaluateScript(getPage(pageId), functionDeclaration, options ?? {})
       return result
     },
-  }
-}
 
-/** 供测试与诊断：读回已落盘的 endpoint 描述。 */
-export async function readEndpointFile(userDataDir: string): Promise<unknown> {
-  try {
-    return JSON.parse(await readFile(join(userDataDir, 'mcp-endpoint.json'), 'utf8')) as unknown
-  } catch {
-    return null
+    async browserListConsoleMessages(pageId, options) {
+      const page = await listConsoleMessages(getPage(pageId), options ?? {})
+      return { messages: page.messages, total: page.total }
+    },
+
+    async browserGetConsoleMessage(pageId, msgid) {
+      return readConsoleMessage(getPage(pageId), msgid)
+    },
+
+    async browserListNetworkRequests(pageId, options) {
+      const page = await listNetworkRequests(getPage(pageId), options ?? {})
+      return { requests: page.requests, total: page.total }
+    },
+
+    async browserGetNetworkRequest(pageId, options) {
+      return getNetworkRequest(getPage(pageId), options ?? {})
+    },
+
+    async browserGetCssStyles(pageId, uid, options) {
+      const ref = refOf(pageId, uid)
+      const page = await getCssStyles(getPage(pageId), ref.backendDOMNodeId, options ?? {})
+      return { rules: page.rules, total: page.total, pageIdx: page.pageIdx }
+    },
+
+    // —————————————————————— 性能（performance） ——————————————————————
+    async browserPerformanceStartTrace(pageId, options) {
+      await startTrace(getPage(pageId), {
+        ...(options?.reload === undefined ? {} : { reload: options.reload }),
+      })
+      return { pageId, note: '已开始录制；用 monospace_performance_stop_trace 停止并落盘。' }
+    },
+
+    async browserPerformanceStopTrace(pageId, options) {
+      const trace = await stopTrace(getPage(pageId), {
+        ...(options?.filePath === undefined ? {} : { filePath: options.filePath }),
+        ...(options?.filePath === undefined ? { fallbackDir: artifactsDir } : {}),
+      })
+      return { pageId, path: trace.path, note: `共 ${trace.events} 个 trace 事件。` }
+    },
   }
 }

@@ -27,18 +27,19 @@ function humbleLike(): AxNode[] {
 describe('剪枝：结构与渲染', () => {
   it('渲染出紧凑缩进文本', () => {
     const result = pruneAxTree(humbleLike())
-    expect(result.text).toContain('- RootWebArea "Your Keys"')
-    expect(result.text).toContain('  - heading "Your Keys"')
-    expect(result.text).toContain('- list level=1')
-    expect(result.text).toContain('- listitem "Synty Studios"')
-    expect(result.text).toContain('  - button "Reveal your key"')
+    // 格式照 Chrome MCP：`uid=… role "name"`，可交互节点带 uid，属性值也加引号。
+    expect(result.text).toContain('RootWebArea "Your Keys"')
+    expect(result.text).toContain('  heading "Your Keys"')
+    expect(result.text).toContain('list level="1"')
+    expect(result.text).toContain('listitem "Synty Studios"')
+    expect(result.text).toContain('  button "Reveal your key"')
   })
 
   it('无名字的 generic 被剪掉，但子节点抬升（不丢内容）', () => {
     const result = pruneAxTree(humbleLike())
     expect(result.text).not.toContain('generic')
     // 抬升后的 Leartes 仍在，且缩进与同级 listitem 一致
-    expect(result.text).toContain('    - listitem "Leartes"')
+    expect(result.text).toContain('    listitem "Leartes"')
   })
 
   it('ignored 节点也被抬升而不是丢弃整支', () => {
@@ -63,7 +64,7 @@ describe('剪枝：结构与渲染', () => {
       }),
     ]
     const result = pruneAxTree(nodes)
-    expect(result.text).toContain('checked=true')
+    expect(result.text).toContain('checked="true"')
     expect(result.text).not.toContain('noise')
   })
 
@@ -73,7 +74,7 @@ describe('剪枝：结构与渲染', () => {
       node('2', 'textbox', { name: { value: '兑换码' }, value: { value: 'AB"C' } }),
     ]
     const result = pruneAxTree(nodes)
-    expect(result.text).toContain('= "AB\\"C"')
+    expect(result.text).toContain('value="AB\\"C"')
   })
 })
 
@@ -132,5 +133,43 @@ describe('剪枝：预算与截断', () => {
     expect(result.text).toBe('')
     expect(result.nodeCount).toBe(0)
     expect(result.truncated).toBe(false)
+  })
+})
+
+describe('引用（uid）：照 Chrome MCP 的交互方式给手柄', () => {
+  /** 带 backendDOMNodeId 的节点才给 uid —— 给了 uid 却点不动比不给更糟。 */
+  it('有 backendDOMNodeId 的节点带 uid，且引用表可回查', () => {
+    const nodes: AxNode[] = [
+      node('1', 'RootWebArea', { name: { value: 'K' }, childIds: ['2'], backendDOMNodeId: 100 }),
+      node('2', 'button', { name: { value: 'Reveal' }, backendDOMNodeId: 200 }),
+    ]
+    const result = pruneAxTree(nodes, { uidPrefix: 7 })
+    expect(result.text).toContain('uid=7_0 RootWebArea "K"')
+    expect(result.text).toContain('uid=7_1 button "Reveal"')
+    expect(result.refs).toEqual([
+      { uid: '7_0', backendDOMNodeId: 100, role: 'RootWebArea', name: 'K' },
+      { uid: '7_1', backendDOMNodeId: 200, role: 'button', name: 'Reveal' },
+    ])
+  })
+
+  it('没有 backendDOMNodeId 的节点不给 uid', () => {
+    const nodes: AxNode[] = [node('1', 'heading', { name: { value: '无句柄' } })]
+    const result = pruneAxTree(nodes)
+    expect(result.text).not.toContain('uid=')
+    expect(result.refs).toEqual([])
+  })
+
+  it('文本被截断时，被截掉那部分节点的 uid 不再算可用手柄', () => {
+    const nodes: AxNode[] = [
+      node('1', 'RootWebArea', { name: { value: 'K' }, childIds: ['2', '3'], backendDOMNodeId: 1 }),
+      node('2', 'button', { name: { value: '甲'.repeat(200) }, backendDOMNodeId: 2 }),
+      node('3', 'button', { name: { value: '乙'.repeat(200) }, backendDOMNodeId: 3 }),
+    ]
+    const result = pruneAxTree(nodes, { maxChars: 120 })
+    expect(result.truncated).toBe(true)
+    // 留下来的引用必须真的出现在文本里，否则 agent 会拿到一个点不动的 uid。
+    for (const ref of result.refs) {
+      expect(result.text).toContain(`uid=${ref.uid} `)
+    }
   })
 })

@@ -6,7 +6,7 @@
  * 不依赖页面脚本，也不会被页面重写；也不需要给页面注入任何代码。
  */
 import type { BrowserWindow } from 'electron'
-import { type AxNode, type PruneResult, pruneAxTree } from './ax-tree'
+import { type AxNode, type AxRef, type PruneResult, pruneAxTree } from './ax-tree'
 
 /** CDP `Accessibility.getFullAXTree` 的响应形状。 */
 interface AxTreeResponse {
@@ -29,6 +29,9 @@ export interface CompactAxSnapshot {
   nodeCount: number
   truncated: boolean
 }
+
+/** 快照里的可交互引用（agent 用 `uid` 做后续 click/fill）。 */
+export type { AxRef }
 
 export function toCompactSnapshot(snapshot: PageAxSnapshot): CompactAxSnapshot {
   return {
@@ -56,7 +59,7 @@ function attach(window: BrowserWindow): void {
  */
 export async function snapshotPageAx(
   window: BrowserWindow,
-  options: { maxNodes?: number; maxChars?: number; maxDepth?: number } = {},
+  options: { maxNodes?: number; maxChars?: number; maxDepth?: number; uidPrefix?: number } = {},
 ): Promise<PageAxSnapshot> {
   attach(window)
   const response = (await window.webContents.debugger.sendCommand(

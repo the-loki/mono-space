@@ -36,20 +36,42 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
           }
         : null,
     ),
-    browserStatus: vi.fn(async () => ({ url: 'u', title: 't', status: 200 })),
-    browserGoto: vi.fn(async () => ({ url: 'u', title: 't', status: 200 })),
-    browserSnapshot: vi.fn(async () => ({
+    // —— 浏览器镜像（Chrome MCP 对齐）——
+    browserListPages: vi.fn(async () => [{ pageId: 1, url: 'u', title: 't', selected: true }]),
+    browserSelectPage: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', selected: true })),
+    browserNewPage: vi.fn(async () => ({ pageId: 2, url: 'u2', title: 't2', selected: true })),
+    browserClosePage: vi.fn(async () => ({ closed: 2, pages: [] })),
+    browserNavigatePage: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', selected: true })),
+    browserWaitFor: vi.fn(async () => ({ matched: 'x' })),
+    browserEmulate: vi.fn(async () => ({ pageId: 1, applied: [] })),
+    browserResizePage: vi.fn(async () => ({ pageId: 1, width: 800, height: 600 })),
+    browserTakeSnapshot: vi.fn(async () => ({
+      pageId: 1,
       url: 'u',
       title: 't',
-      text: '- RootWebArea "x"',
+      text: '- uid=1_0 RootWebArea "x"',
       nodeCount: 1,
       truncated: false,
     })),
-    browserScreenshot: vi.fn(async () => ({ path: '/tmp/a.png' })),
-    keyPageRead: vi.fn(async () => ({
-      url: 'u#k',
-      snapshot: { url: 'u#k', title: 't', text: 'x', nodeCount: 1, truncated: false },
-    })),
+    browserTakeScreenshot: vi.fn(async () => ({ pageId: 1, format: 'png', bytes: 3 })),
+    browserClick: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserClickAt: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserHover: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserDrag: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserFill: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserFillForm: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserTypeText: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserPressKey: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserUploadFile: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserHandleDialog: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserEvaluateScript: vi.fn(async () => ({ value: 1 })),
+    browserListConsoleMessages: vi.fn(async () => ({ messages: [], total: 0 })),
+    browserGetConsoleMessage: vi.fn(async () => ({ msgid: 1, type: 'log', text: 'x' })),
+    browserListNetworkRequests: vi.fn(async () => ({ requests: [], total: 0 })),
+    browserGetNetworkRequest: vi.fn(async () => ({ reqid: 1, url: 'u', method: 'GET' })),
+    browserGetCssStyles: vi.fn(async () => ({ rules: [], total: 0, pageIdx: 0 })),
+    browserPerformanceStartTrace: vi.fn(async () => ({ pageId: 1 })),
+    browserPerformanceStopTrace: vi.fn(async () => ({ pageId: 1, path: '/tmp/t.json' })),
     ordersSync: vi.fn(async () => ({ ok: true })),
     keysUpsert: vi.fn(async () => ({ written: 1, auditId: 'a#1' })),
     keyReveal: vi.fn(async () => ({ status: 'revealed', attempts: 1, note: 'ok' })),
@@ -75,13 +97,16 @@ describe('命名：全部 monospace_ 前缀（防与其它浏览器 MCP 撞名�
     const tools = createMcpTools(fakeHost())
     // 与内置浏览器语义相关的工具（key_page_read 也会驱动内置浏览器，但不带 browser 段）。
     const browserSemantic = [
-      `${TOOL_PREFIX}browser_status`,
-      `${TOOL_PREFIX}browser_goto`,
-      `${TOOL_PREFIX}browser_snapshot`,
-      `${TOOL_PREFIX}browser_screenshot`,
-      `${TOOL_PREFIX}key_page_read`,
+      `${TOOL_PREFIX}click`,
+      `${TOOL_PREFIX}take_snapshot`,
+      `${TOOL_PREFIX}navigate_page`,
+      `${TOOL_PREFIX}evaluate_script`,
+      `${TOOL_PREFIX}take_screenshot`,
     ]
-    expect(tools.filter((tool) => tool.name.includes('browser_'))).toHaveLength(4)
+    // 浏览器类工具是 Chrome MCP 的镜像，数量明显多于领域工具。
+    expect(
+      tools.filter((tool) => tool.description.includes('MonoSpace 应用内置的浏览会话')).length,
+    ).toBeGreaterThan(20)
     for (const name of browserSemantic) {
       const tool = tools.find((candidate) => candidate.name === name)
       expect(tool, name).toBeDefined()
@@ -103,10 +128,11 @@ describe('权限分层（#13）', () => {
     const tools = createMcpTools(fakeHost())
     const layerOf = (name: string) => tools.find((t) => t.name === name)?.layer
     expect(layerOf(`${TOOL_PREFIX}ledger_stats`)).toBe('L0')
-    expect(layerOf(`${TOOL_PREFIX}browser_snapshot`)).toBe('L0')
-    expect(layerOf(`${TOOL_PREFIX}key_page_read`)).toBe('L0')
+    expect(layerOf(`${TOOL_PREFIX}take_snapshot`)).toBe('L0')
+    expect(layerOf(`${TOOL_PREFIX}list_console_messages`)).toBe('L0')
     expect(layerOf(`${TOOL_PREFIX}orders_sync`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}keys_upsert`)).toBe('L1')
+    expect(layerOf(`${TOOL_PREFIX}click`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}key_reveal`)).toBe('L2')
     expect(layerOf(`${TOOL_PREFIX}key_redeem`)).toBe('L2')
   })
@@ -145,10 +171,57 @@ describe('工具行为', () => {
     expect(result.found).toBe(false)
   })
 
-  it('key_page_read 转发 keyId', async () => {
+  it('click 转发 pageId 与 uid（用最近快照的引用）', async () => {
     const host = fakeHost()
-    await toolNamed(`${TOOL_PREFIX}key_page_read`, host).run({ keyId: 7 })
-    expect(host.keyPageRead).toHaveBeenCalledWith(7)
+    await toolNamed(`${TOOL_PREFIX}click`, host).run({ pageId: 3, uid: '1_5', dblClick: true })
+    expect(host.browserClick).toHaveBeenCalledWith(3, '1_5', {
+      dblClick: true,
+      includeSnapshot: undefined,
+    })
+  })
+
+  it('take_snapshot 转发 pageId 与 verbose', async () => {
+    const host = fakeHost()
+    const result = await toolNamed(`${TOOL_PREFIX}take_snapshot`, host).run({
+      pageId: 4,
+      verbose: true,
+    })
+    expect(host.browserTakeSnapshot).toHaveBeenCalledWith(4, {
+      filePath: undefined,
+      verbose: true,
+    })
+    expect(result).toMatchObject({ nodeCount: 1 })
+  })
+
+  it('evaluate_script 转发函数与参数', async () => {
+    const host = fakeHost()
+    await toolNamed(`${TOOL_PREFIX}evaluate_script`, host).run({
+      pageId: 2,
+      function: '() => document.title',
+      args: [1, 'a'],
+    })
+    expect(host.browserEvaluateScript).toHaveBeenCalledWith(2, '() => document.title', {
+      args: [1, 'a'],
+      dialogAction: undefined,
+      filePath: undefined,
+      waitForStableDom: undefined,
+    })
+  })
+
+  it('navigate_page 转发导航参数', async () => {
+    const host = fakeHost()
+    await toolNamed(`${TOOL_PREFIX}navigate_page`, host).run({
+      pageId: 1,
+      type: 'url',
+      url: 'https://example.com',
+    })
+    expect(host.browserNavigatePage).toHaveBeenCalledWith(1, {
+      type: 'url',
+      url: 'https://example.com',
+      timeout: undefined,
+      ignoreCache: undefined,
+      handleBeforeUnload: undefined,
+    })
   })
 
   it('keys_upsert 转发条目', async () => {
