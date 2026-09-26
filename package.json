@@ -17,7 +17,8 @@
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "pnpm test:e2e",
+    "test": "pnpm test:unit && pnpm test:e2e",
+    "test:unit": "vitest run",
     "test:e2e": "electron-vite build && playwright test"
   },
   "devDependencies": {
@@ -35,6 +36,7 @@
     "react-dom": "^19.0.0",
     "tailwindcss": "4.3.3",
     "typescript": "~5.9.3",
-    "vite": "~7.3.6"
+    "vite": "~7.3.6",
+    "vitest": "^3.2.7"
   }
 }
