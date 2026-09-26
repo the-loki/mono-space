@@ -10,7 +10,9 @@ status: accepted
 
 - **纯 API 客户端**——被实测证伪：只读面（`GET /api/v1/*`）确实可用，但写面被 Cloudflare 拦截。曾是最省事的方案，已排除，不要重新立项。
 - **外接系统浏览器 + 远程调试端口**——被 Chrome 136 起的政策排除：`--remote-debugging-port` 在默认 profile 上失效，必须配 `--user-data-dir`，那就只能是空 profile，「复用已登录态」的前提不成立。
-- **内嵌第二套 Chromium（Playwright / Patchright）**——可作退路，但要多带一份浏览器、多背一条版本分叉（与应用自带 Chromium 不一致），相对收益不值。主路径用 Electron 原生 + CDP 足够。
+- **内嵌第二套 Chromium（Playwright / Patchright，运行时驱动）**——可作退路，但要多带一份浏览器、多背一条版本分叉（与应用自带 Chromium 不一致），相对收益不值。
+
+  ⚠️ **本条只排除「运行时驱动」这一种角色。** 把 Playwright 当**测试工具**不在排除范围内，而且恰恰是首选：用 `_electron.launch()` 驱动**真实 Electron** 跑集成测试，测的就是生产同一份 Chromium。（普通 `chromium` 测的是 Playwright 自带的浏览器 build，与 Electron 的 Chromium 版本分叉，会让「测试通过、生产挂掉」变成可能。）至于页面**怎么被驱动**——模型生成的扩展、还是 CDP——是另一个决策，不在本条范围内。
 
 ## Consequences
 
