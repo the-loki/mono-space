@@ -26,4 +26,7 @@ All coding tasks follow TDD.
 
 ## Code style
 
-Avoid large files and functions; split by responsibility.
+- Keep files focused on a cohesive responsibility and functions on a single task. When extending a large file or function, extract separable responsibilities before adding more logic.
+- Split along domain, I/O, data transformation, or view boundaries. Give extracted modules explicit inputs and outputs; keep coupled state transitions under one owner and dependencies acyclic.
+- Use line count as a review signal, not a quota. Each extraction must improve readability or testability. Explain in the change summary why a large touched file or function remains cohesive when retaining it.
+- Preserve public interfaces, persisted formats, side-effect ordering, and error/cancellation behavior during refactors; verify through public-interface behavior tests.
