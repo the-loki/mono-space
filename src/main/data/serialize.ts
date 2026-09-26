@@ -6,8 +6,6 @@
  * 本模块为纯函数，不依赖数据库与 electron。
  */
 import {
-  ENGINES,
-  type Engine,
   LEDGER_EXPORT_VERSION,
   type LedgerExport,
   type LedgerExportRow,
@@ -29,7 +27,6 @@ export const CSV_COLUMNS: readonly (keyof LedgerExportRow)[] = [
   'orderCurrency',
   'bundleRemoteId',
   'bundleName',
-  'engine',
   'publisher',
   'keyRemoteId',
   'keyName',
@@ -55,7 +52,6 @@ export function ordersToRows(orders: readonly SyncedOrder[], accountId: string):
           orderCurrency: order.currency ?? null,
           bundleRemoteId: bundle.remoteId,
           bundleName: bundle.name ?? null,
-          engine: bundle.engine ?? null,
           publisher: bundle.publisher ?? null,
           keyRemoteId: key.remoteId,
           keyName: key.name ?? null,
@@ -95,7 +91,6 @@ export function rowsToOrders(rows: readonly LedgerExportRow[]): SyncedOrder[] {
       bundle = {
         remoteId: row.bundleRemoteId,
         name: row.bundleName,
-        engine: toEngine(row.engine),
         publisher: row.publisher,
         keys: [],
       }
@@ -176,7 +171,6 @@ export function parseLedgerCsv(text: string): SyncedOrder[] {
       orderCurrency: emptyToNull(record.get('orderCurrency')),
       bundleRemoteId: record.get('bundleRemoteId') ?? '',
       bundleName: emptyToNull(record.get('bundleName')),
-      engine: emptyToNull(record.get('engine')),
       publisher: emptyToNull(record.get('publisher')),
       keyRemoteId: record.get('keyRemoteId') ?? '',
       keyName: emptyToNull(record.get('keyName')),
@@ -206,7 +200,6 @@ function normalizeOrder(order: SyncedOrder): SyncedOrder {
       ? order.bundles.map((bundle) => ({
           remoteId: bundle.remoteId,
           name: bundle.name ?? null,
-          engine: toEngine(bundle.engine ?? null),
           publisher: bundle.publisher ?? null,
           keys: Array.isArray(bundle.keys)
             ? bundle.keys.map((key) => ({
@@ -297,13 +290,6 @@ function parseCsv(input: string): string[][] {
 
 function emptyToNull(value: string | undefined): string | null {
   return value === undefined || value === '' ? null : value
-}
-
-function toEngine(value: string | null): Engine {
-  if (value && (ENGINES as readonly string[]).includes(value)) {
-    return value as Engine
-  }
-  return 'unknown'
 }
 
 function toRevealStatus(value: RevealStatus | string | undefined): RevealStatus {

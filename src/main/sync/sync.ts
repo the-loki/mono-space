@@ -31,11 +31,11 @@ export interface SyncReport {
   source: string
   /** 订单列表里的 gamekey 数（= 拉到的订单总数）。 */
   orderCount: number
-  /** 映射成引擎资产包的订单数。 */
+  /** 映射成资产包的订单数。 */
   mappedOrderCount: number
   /** 被跳过的订单数（= skipped 各桶之和）。 */
   skippedOrderCount: number
-  /** 映射后的引擎资产包总数。 */
+  /** 映射后的资产包总数。 */
   bundleCount: number
   /** 映射后的 key 总数。 */
   keyCount: number

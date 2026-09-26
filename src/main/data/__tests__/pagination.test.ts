@@ -23,7 +23,7 @@ function bigOrder(): SyncedOrder {
     remoteId: 'big-order',
     productName: '大库订单',
     purchasedAt: '2026-09-01T00:00:00.000Z',
-    bundles: [{ remoteId: 'big-bundle', name: '大包', engine: 'unity', keys }],
+    bundles: [{ remoteId: 'big-bundle', name: '大包', keys }],
   }
 }
 

@@ -2,7 +2,7 @@
  * 数据层领域类型。
  *
  * 权威决定（地图 #1「讨论：数据模型边界」）：
- * - SQLite，三层：订单 → 引擎资产包 → key，外加订单快照；
+ * - SQLite，三层：订单 → 资产包 → key，外加订单快照；
  * - key 用「揭示状态 / 兑换状态」两个独立字段；
  * - 三层均预留账号维度（字段预留，界面先单账号）。
  */
@@ -48,21 +48,11 @@ export const REDEEM_STATUSES: readonly RedeemStatus[] = [
   'needs_human',
 ]
 
-/** 引擎资产包面向的引擎；未知归入 unknown。 */
-export type Engine = 'unity' | 'unreal' | 'gamemaker' | 'unknown'
-
-/** 全部引擎枚举。 */
-export const ENGINES: readonly Engine[] = ['unity', 'unreal', 'gamemaker', 'unknown']
-
-/** 同步进来的单条 key。状态字段可选：未提供时既有行保持不变，新行为默认值。 */
 /**
  * 平台：这条 key 在哪里兑换。
  *
  * **逐条判断**（ADR-0003 追加）：同一订单页可能混着多个平台的 key，所以它是 key 级属性，
  * 由 agent 读那一行自己的「Redemption Instructions」链接得出。认不出一律 `unknown`。
- *
- * 为什么不叫 engine：`engine` 来自接口的 `machine_name` 后缀，而页面读取的 key 没有 machine_name
- * —— 页面驱动下引擎永远推不出来。平台则相反，页面链接里就有。
  */
 export type Platform = 'fab' | 'epic' | 'steam' | 'unity' | 'gog' | 'unknown'
 
@@ -80,11 +70,10 @@ export interface SyncedKey {
   redeemCode?: string | null
 }
 
-/** 同步进来的单个引擎资产包。 */
+/** 同步进来的单个资产包。 */
 export interface SyncedBundle {
   remoteId: string
   name?: string | null
-  engine?: Engine | null
   publisher?: string | null
   keys: SyncedKey[]
 }
@@ -130,7 +119,6 @@ export interface KeyListItem {
   bundleId: number
   bundleRemoteId: string
   bundleName: string | null
-  engine: Engine
   publisher: string | null
   keyRemoteId: string
   name: string | null
@@ -221,7 +209,6 @@ export interface LedgerExportRow {
   orderCurrency: string | null
   bundleRemoteId: string
   bundleName: string | null
-  engine: string | null
   publisher: string | null
   keyRemoteId: string
   keyName: string | null

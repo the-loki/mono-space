@@ -152,8 +152,7 @@ export function buildPageOrder(read: PageOrderRead): SyncedOrder {
   const bundle: SyncedBundle = {
     remoteId: pageBundleRemoteId(read),
     name: read.bundleName?.trim() || null,
-    // 页面看不出引擎/发行商，留着；不猜。
-    engine: null,
+    // 页面看不出发行商，留着；不猜。
     publisher: null,
     keys,
   }

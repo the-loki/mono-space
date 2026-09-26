@@ -12,7 +12,6 @@ function sampleOrder(): SyncedOrder {
       {
         remoteId: 'bundle-unity',
         name: 'Unity 素材包',
-        engine: 'unity',
         publisher: '示例发布商',
         keys: [
           { remoteId: 'key-u1', name: 'Unity 资产 A', keyType: 'download' },
@@ -22,7 +21,6 @@ function sampleOrder(): SyncedOrder {
       {
         remoteId: 'bundle-unreal',
         name: 'Unreal 素材包',
-        engine: 'unreal',
         keys: [{ remoteId: 'key-e1', name: 'Unreal 资产', keyType: 'epic' }],
       },
     ],

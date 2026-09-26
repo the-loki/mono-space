@@ -8,7 +8,6 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
       unrevealed: 3,
       revealedUnredeemed: 6,
       redeemed: 1,
-      byEngine: { unity: 4, unreal: 5, unknown: 1 },
     })),
     ledgerQuery: vi.fn(async () => [
       {
@@ -16,7 +15,6 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
         name: '素材',
         bundle: 'Synty',
         order: '某单',
-        engine: 'unity',
         revealStatus: 'unrevealed',
         redeemStatus: 'not_redeemed',
       },
@@ -28,7 +26,6 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
             name: '素材',
             bundle: 'Synty',
             order: '某单',
-            engine: 'unity',
             revealStatus: 'unrevealed',
             redeemStatus: 'not_redeemed',
             redeemCode: 'SECRET-CODE',
@@ -162,7 +159,7 @@ describe('parameters 是合法的 TypeBox 对象（Pi SDK 要求）', () => {
 
     const query = toolNamed(`${TOOL_PREFIX}ledger_query`).parameters
     expect(query.type).toBe('object')
-    for (const key of ['view', 'engine', 'limit', 'offset']) {
+    for (const key of ['view', 'limit', 'offset']) {
       expect(Object.keys(query.properties)).toContain(key)
     }
     // limit 原本是 optional，不能被标成必填。

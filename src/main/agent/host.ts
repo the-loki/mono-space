@@ -97,7 +97,6 @@ export function createMcpHost(): McpHost {
     name: string | null
     bundleName: string | null
     orderProductName: string | null
-    engine: string
     revealStatus: string
     redeemStatus: string
   }): LedgerRow {
@@ -106,7 +105,6 @@ export function createMcpHost(): McpHost {
       name: item.name,
       bundle: item.bundleName,
       order: item.orderProductName,
-      engine: item.engine,
       revealStatus: item.revealStatus,
       redeemStatus: item.redeemStatus,
     }
@@ -213,22 +211,11 @@ export function createMcpHost(): McpHost {
   return {
     // —————————————————————— MonoSpace 领域能力 ——————————————————————
     async ledgerStats(): Promise<LedgerStats> {
-      const total = repository.countKeys({ view: 'all' })
-      const byEngine: Record<string, number> = {}
-      const pageSize = 500
-      for (let offset = 0; offset < total; offset += pageSize) {
-        const page = repository.listKeys({ view: 'all', limit: pageSize, offset })
-        for (const item of page.items) {
-          byEngine[item.engine] = (byEngine[item.engine] ?? 0) + 1
-        }
-        if (page.items.length === 0) break
-      }
       return {
-        total,
+        total: repository.countKeys({ view: 'all' }),
         unrevealed: repository.countKeys({ view: 'unrevealed' }),
         revealedUnredeemed: repository.countKeys({ view: 'revealed_unredeemed' }),
         redeemed: repository.countKeys({ view: 'redeemed' }),
-        byEngine,
       }
     },
 

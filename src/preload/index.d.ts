@@ -17,8 +17,7 @@ export interface MonoSpaceLedgerKeyListItem {
   bundleId: number
   bundleRemoteId: string
   bundleName: string | null
-  engine: 'unity' | 'unreal' | 'gamemaker' | 'unknown'
-  /** 平台（逐条判断，界面只显示它，不显示引擎）。 */
+  /** 平台（逐条判断，界面只显示它）。 */
   platform: 'fab' | 'epic' | 'steam' | 'unity' | 'gog' | 'unknown'
   publisher: string | null
   keyRemoteId: string

@@ -273,7 +273,7 @@ export function LedgerPage(): JSX.Element {
       <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6rem_5rem] gap-3 border-slate-700 border-b px-3 pb-1 text-slate-500 text-xs">
         <span>资产</span>
         <span>包</span>
-        <span>引擎</span>
+        <span>平台</span>
         <span>揭示状态</span>
         <span>兑换状态</span>
         <span>动作</span>

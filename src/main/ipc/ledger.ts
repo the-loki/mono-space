@@ -56,7 +56,6 @@ export function toKeyListItem(item: KeyListItem): KeyListItem {
     bundleId: item.bundleId,
     bundleRemoteId: item.bundleRemoteId,
     bundleName: item.bundleName,
-    engine: item.engine,
     publisher: item.publisher,
     keyRemoteId: item.keyRemoteId,
     name: item.name,

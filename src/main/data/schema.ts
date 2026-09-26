@@ -2,7 +2,7 @@
  * 台账库表结构（SQLite）。
  *
  * 三层 + 快照：
- *   orders（订单）→ engine_asset_bundles（引擎资产包）→ keys（key 条目）
+ *   orders（订单）→ engine_asset_bundles（资产包）→ keys（key 条目）
  *   另有 order_snapshots（订单快照，供定期全量比对）
  *
  * 三层均带 account_id 账号维度（字段预留，界面先单账号）。
@@ -11,7 +11,7 @@
 import { REDEEM_STATUSES, REVEAL_STATUSES } from './types'
 
 /** 当前 schema 版本号。每次改表结构都追加一条迁移并递增。 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 /** 台账业务表清单（不含迁移记账表 schema_version）。 */
 export const LEDGER_TABLES: readonly string[] = [

@@ -7,13 +7,13 @@ import { createMockHttp, gamekeyFromUrl, type MockReply } from './mock-http'
 
 const CAPTURED_AT = '2026-09-10T00:00:00.000Z'
 
-/** 造一个 Unreal 引擎资产包订单。 */
-function engineOrder(gamekey: string, keys: string[], productName = 'Unreal 资产包'): HumbleOrder {
+/** 造一个资产包订单。 */
+function assetOrder(gamekey: string, keys: string[], productName = 'Unreal 资产包'): HumbleOrder {
   return {
     gamekey,
     created: '2026-09-01T10:00:00.000Z',
     currency: 'USD',
-    product: { machine_name: `${gamekey}_engine`, human_name: productName },
+    product: { machine_name: `${gamekey}_bundle`, human_name: productName },
     tpkd_dict: {
       all_tpks: keys.map((name, index) => ({
         machine_name: name,
@@ -56,8 +56,8 @@ describe('只读同步编排', () => {
     const repo = openLedger({ path: ':memory:' })
     const http = createMockHttp(
       handlerFor({
-        'order-a': engineOrder('order-a', ['ka1', 'ka2']),
-        'order-b': engineOrder('order-b', ['kb1']),
+        'order-a': assetOrder('order-a', ['ka1', 'ka2']),
+        'order-b': assetOrder('order-b', ['kb1']),
         'order-ebook': ebookOrder('order-ebook'),
       }),
     )
@@ -83,8 +83,8 @@ describe('只读同步编排', () => {
   it('重复同步同一订单只有一次写入，快照去重', async () => {
     const repo = openLedger({ path: ':memory:' })
     const ordersByKey = {
-      'order-a': engineOrder('order-a', ['ka1', 'ka2']),
-      'order-b': engineOrder('order-b', ['kb1']),
+      'order-a': assetOrder('order-a', ['ka1', 'ka2']),
+      'order-b': assetOrder('order-b', ['kb1']),
     }
     const run = async (capturedAt: string) => {
       const http = createMockHttp(handlerFor(ordersByKey))
@@ -112,8 +112,8 @@ describe('只读同步编排', () => {
 
     const firstHttp = createMockHttp(
       handlerFor({
-        'order-a': engineOrder('order-a', ['ka1']),
-        'order-b': engineOrder('order-b', ['kb1']),
+        'order-a': assetOrder('order-a', ['ka1']),
+        'order-b': assetOrder('order-b', ['kb1']),
       }),
     )
     await runSync({
@@ -125,8 +125,8 @@ describe('只读同步编排', () => {
     // 第二轮：order-b 改名（变化），order-a 消失（removed），order-c 新增。
     const secondHttp = createMockHttp(
       handlerFor({
-        'order-b': engineOrder('order-b', ['kb1'], '改名后的资产包'),
-        'order-c': engineOrder('order-c', ['kc1']),
+        'order-b': assetOrder('order-b', ['kb1'], '改名后的资产包'),
+        'order-c': assetOrder('order-c', ['kc1']),
       }),
     )
     const report = await runSync({

@@ -23,13 +23,19 @@ describe('迁移', () => {
 
     expect(result.from).toBe(0)
     expect(result.to).toBe(SCHEMA_VERSION)
-    // 新库要把全部迁移按顺序跑完（v1 建表 + v2 加 platform 列）。
+    // 新库要把全部迁移按顺序跑完（v1 建表 + v2 加 platform 列 + v3 删 engine 列）。
     expect(result.applied).toEqual(MIGRATIONS.map((migration) => migration.version))
     expect(currentSchemaVersion(db)).toBe(SCHEMA_VERSION)
 
     // v2 的产物：keys 长出了 platform 列（平台逐条判断，见 ADR-0003）。
     const columns = db.prepare('PRAGMA table_info(keys)').all() as { name: string }[]
     expect(columns.map((column) => column.name)).toContain('platform')
+
+    // v3 的产物：资产包不再有 engine 列（页面读取的 key 没有 machine_name，引擎推不出来）。
+    const bundleColumns = db.prepare('PRAGMA table_info(engine_asset_bundles)').all() as {
+      name: string
+    }[]
+    expect(bundleColumns.map((column) => column.name)).not.toContain('engine')
 
     const tables = listTables(db)
     for (const table of LEDGER_TABLES) {

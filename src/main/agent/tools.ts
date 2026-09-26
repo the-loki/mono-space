@@ -19,7 +19,6 @@ export interface LedgerStats {
   unrevealed: number
   revealedUnredeemed: number
   redeemed: number
-  byEngine: Record<string, number>
 }
 
 /** 台账列表项（**不含兑换码明文**，`#14` §5）。 */
@@ -28,7 +27,6 @@ export interface LedgerRow {
   name: string | null
   bundle: string | null
   order: string | null
-  engine: string
   revealStatus: string
   redeemStatus: string
 }
@@ -72,12 +70,7 @@ export interface KeyUpsertEntry {
  */
 export interface McpHost extends BrowserHost {
   ledgerStats(): Promise<LedgerStats>
-  ledgerQuery(input: {
-    view?: string
-    engine?: string
-    limit?: number
-    offset?: number
-  }): Promise<LedgerRow[]>
+  ledgerQuery(input: { view?: string; limit?: number; offset?: number }): Promise<LedgerRow[]>
   keyContext(keyId: number): Promise<(LedgerRow & { redeemCode?: string | null }) | null>
   ordersSync(): Promise<unknown>
   keysUpsert(entries: KeyUpsertEntry[]): Promise<UpsertResult>
@@ -137,8 +130,7 @@ function createDomainTools(host: McpHost): ToolSpec[] {
     {
       name: `${TOOL_PREFIX}ledger_stats`,
       title: 'MonoSpace 台账统计',
-      description:
-        '统计 MonoSpace 台账：总数与「未揭示 / 已揭示未兑换 / 已兑换」分布、各引擎数量。只读。',
+      description: '统计 MonoSpace 台账：总数与「未揭示 / 已揭示未兑换 / 已兑换」分布。只读。',
       layer: 'L0',
       parameters: Type.Object({}),
       run: () => host.ledgerStats(),
@@ -147,7 +139,7 @@ function createDomainTools(host: McpHost): ToolSpec[] {
       name: `${TOOL_PREFIX}ledger_query`,
       title: 'MonoSpace 台账查询',
       description:
-        '分页查询 MonoSpace 台账列表（资产名 / 包 / 订单 / 引擎 / 揭示与兑换状态）。**不含兑换码明文**；要码请用 key_context。只读。',
+        '分页查询 MonoSpace 台账列表（资产名 / 包 / 订单 / 平台 / 揭示与兑换状态）。**不含兑换码明文**；要码请用 key_context。只读。',
       layer: 'L0',
       parameters: Type.Object({
         view: Type.Optional(
@@ -158,14 +150,12 @@ function createDomainTools(host: McpHost): ToolSpec[] {
             Type.Literal('redeemed'),
           ]),
         ),
-        engine: Type.Optional(Type.String()),
         limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
       }),
       run: (input) =>
         host.ledgerQuery({
           view: input.view as string | undefined,
-          engine: input.engine as string | undefined,
           limit: input.limit as number | undefined,
           offset: input.offset as number | undefined,
         }),
@@ -174,7 +164,7 @@ function createDomainTools(host: McpHost): ToolSpec[] {
       name: `${TOOL_PREFIX}key_context`,
       title: 'MonoSpace 单条 key 上下文',
       description:
-        '查 MonoSpace 台账里某条 key 的上下文（名称/包/订单/引擎/揭示与兑换状态）。**仅当 includeCode=true 时才返回兑换码明文**，且此调用会留痕。',
+        '查 MonoSpace 台账里某条 key 的上下文（名称/包/订单/平台/揭示与兑换状态）。**仅当 includeCode=true 时才返回兑换码明文**，且此调用会留痕。',
       layer: 'L0',
       parameters: Type.Object({
         keyId: Type.Integer({ minimum: 1 }),
@@ -241,7 +231,7 @@ function createDomainTools(host: McpHost): ToolSpec[] {
       name: `${TOOL_PREFIX}orders_sync`,
       title: 'MonoSpace 同步订单（接口）',
       description:
-        '让 MonoSpace 通过 **Humble 接口**跑一次只读同步：拉取订单列表与详情，增量写入台账（订单 → 引擎资产包 → key）。写入类，会留痕。',
+        '让 MonoSpace 通过 **Humble 接口**跑一次只读同步：拉取订单列表与详情，增量写入台账（订单 → 资产包 → key）。写入类，会留痕。',
       layer: 'L1',
       parameters: Type.Object({}),
       run: () => host.ordersSync(),

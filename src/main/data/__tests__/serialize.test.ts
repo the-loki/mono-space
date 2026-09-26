@@ -14,7 +14,6 @@ function seedOrders(): SyncedOrder[] {
         {
           remoteId: 'bundle-1',
           name: '带"引号"的包',
-          engine: 'unity',
           publisher: '发布商',
           keys: [
             {
@@ -38,7 +37,6 @@ function seedOrders(): SyncedOrder[] {
         {
           remoteId: 'bundle-2',
           name: 'Unreal 包',
-          engine: 'unreal',
           keys: [
             {
               remoteId: 'key-3',
@@ -67,7 +65,6 @@ function snapshot(repo: ReturnType<typeof openLedger>) {
       revealStatus: item.revealStatus,
       redeemStatus: item.redeemStatus,
       redeemedAt: item.redeemedAt,
-      engine: item.engine,
       bundleName: item.bundleName,
       orderRemoteId: item.orderRemoteId,
       orderProductName: item.orderProductName,

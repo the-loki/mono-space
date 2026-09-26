@@ -61,7 +61,6 @@ function seedLedger(dbPath: string): SeedResult {
         {
           remoteId: `bundle-${orderIndex}`,
           name: `包 ${orderIndex}`,
-          engine: 'unity',
           keys,
         },
       ],

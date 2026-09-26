@@ -41,6 +41,12 @@ export const MIGRATIONS: readonly Migration[] = [
     // 平台（ADR-0003）：key 级、逐条判断。老库已有数据 → 加列即可，默认 NULL（读作 unknown）。
     up: (db) => db.exec('ALTER TABLE keys ADD COLUMN platform TEXT'),
   },
+  {
+    version: 3,
+    name: 'drop-engine',
+    // 引擎来自接口的 machine_name 后缀，页面读取的 key 没有它，永远推不出来（ADR-0003）。
+    up: (db) => db.exec('ALTER TABLE engine_asset_bundles DROP COLUMN engine'),
+  },
 ]
 
 /** 读取当前 schema 版本；schema_version 表不存在时视为 0。 */

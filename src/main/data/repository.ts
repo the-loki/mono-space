@@ -22,7 +22,6 @@ import {
 } from './serialize'
 import {
   DEFAULT_ACCOUNT_ID,
-  type Engine,
   type KeyDetail,
   type KeyListItem,
   type KeyPage,
@@ -67,7 +66,6 @@ const KEY_LIST_COLUMNS = `
   b.id AS bundle_id,
   b.remote_id AS bundle_remote_id,
   b.name AS bundle_name,
-  b.engine AS engine,
   b.publisher AS publisher,
   k.remote_id AS key_remote_id,
   k.name AS key_name,
@@ -186,7 +184,7 @@ export class LedgerRepository {
     return { id: Number(result.lastInsertRowid), inserted: true }
   }
 
-  /** 写入 / 更新一个引擎资产包，返回库内 id 与是否新增。 */
+  /** 写入 / 更新一个资产包，返回库内 id 与是否新增。 */
   upsertBundle(orderId: number, bundle: SyncedBundle): { id: number; inserted: boolean } {
     const now = nowIso()
     const existing = this.stmt(
@@ -198,29 +196,21 @@ export class LedgerRepository {
       const id = Number(existing.id)
       this.stmt(
         `UPDATE engine_asset_bundles
-           SET name = ?, engine = ?, publisher = ?, raw_json = ?, updated_at = ?
+           SET name = ?, publisher = ?, raw_json = ?, updated_at = ?
          WHERE id = ?`,
-      ).run(
-        nullable(bundle.name),
-        nullable(bundle.engine),
-        nullable(bundle.publisher),
-        rawJson,
-        now,
-        id,
-      )
+      ).run(nullable(bundle.name), nullable(bundle.publisher), rawJson, now, id)
       return { id, inserted: false }
     }
 
     const result = this.stmt(
       `INSERT INTO engine_asset_bundles
-         (account_id, order_id, remote_id, name, engine, publisher, raw_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (account_id, order_id, remote_id, name, publisher, raw_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       this.accountId,
       orderId,
       bundle.remoteId,
       nullable(bundle.name),
-      nullable(bundle.engine),
       nullable(bundle.publisher),
       rawJson,
       now,
@@ -473,7 +463,6 @@ export class LedgerRepository {
               o.currency AS order_currency,
               b.remote_id AS bundle_remote_id,
               b.name AS bundle_name,
-              b.engine AS engine,
               b.publisher AS publisher,
               k.remote_id AS key_remote_id,
               k.name AS key_name,
@@ -497,7 +486,6 @@ export class LedgerRepository {
       orderCurrency: text(row.order_currency),
       bundleRemoteId: text(row.bundle_remote_id) ?? '',
       bundleName: text(row.bundle_name),
-      engine: text(row.engine),
       publisher: text(row.publisher),
       keyRemoteId: text(row.key_remote_id) ?? '',
       keyName: text(row.key_name),
@@ -584,7 +572,6 @@ function mapKeyListItem(row: Record<string, SQLOutputValue>): KeyListItem {
     bundleId: Number(row.bundle_id),
     bundleRemoteId: text(row.bundle_remote_id) ?? '',
     bundleName: text(row.bundle_name),
-    engine: (text(row.engine) ?? 'unknown') as Engine,
     publisher: text(row.publisher),
     keyRemoteId: text(row.key_remote_id) ?? '',
     name: text(row.key_name),

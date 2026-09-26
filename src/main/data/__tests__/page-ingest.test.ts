@@ -113,10 +113,9 @@ describe('buildPageOrder：只写页面上真实读到的东西', () => {
     expect(order.bundles[0]?.keys[0]?.redeemCode).toBeNull()
   })
 
-  it('页面看不出引擎/发行商/机器名 → 一律留空，不造假', () => {
+  it('页面看不出发行商/机器名 → 一律留空，不造假', () => {
     const order = buildPageOrder({ orderGamekey: 'g', keys: [{ name: 'X', revealed: false }] })
     const bundle = order.bundles[0]
-    expect(bundle?.engine).toBeNull()
     expect(bundle?.publisher).toBeNull()
     expect(bundle?.keys[0]?.keyType).toBeNull()
   })

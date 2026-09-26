@@ -25,10 +25,7 @@ export const REDEEM_STATUS_LABELS: Record<RedeemStatus, string> = {
 }
 
 /**
- * 平台标签。
- *
- * **界面不显示引擎**（ADR-0003）：引擎来自接口的 machine_name，页面读取的 key 没有它，
- * 显示出来永远是「未知引擎」。平台能从页面链接逐条读出，才有意义。
+ * 平台标签。平台从页面链接逐条读出，才拿得准（ADR-0003）。
  */
 export const PLATFORM_LABELS: Record<Platform, string> = {
   fab: 'Fab',

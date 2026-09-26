@@ -53,7 +53,6 @@ function normalizeBundle(bundle: SyncedBundle): Record<string, unknown> {
   return {
     remoteId: bundle.remoteId,
     name: bundle.name ?? null,
-    engine: bundle.engine ?? null,
     publisher: bundle.publisher ?? null,
     keys: [...bundle.keys]
       .map(normalizeKey)
@@ -106,7 +105,6 @@ function bundleStructure(bundles: readonly SyncedBundle[]): string {
     .map((bundle) => ({
       remoteId: bundle.remoteId,
       name: bundle.name ?? null,
-      engine: bundle.engine ?? null,
       publisher: bundle.publisher ?? null,
     }))
     .sort((a, b) => a.remoteId.localeCompare(b.remoteId))

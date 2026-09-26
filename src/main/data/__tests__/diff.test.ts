@@ -12,7 +12,6 @@ function order(remoteId: string, productName = `订单 ${remoteId}`): SyncedOrde
       {
         remoteId: `${remoteId}-bundle`,
         name: 'Unity 素材包',
-        engine: 'unity',
         keys: [{ remoteId: `${remoteId}-key`, name: '素材 key' }],
       },
     ],
@@ -50,7 +49,6 @@ describe('订单快照比对', () => {
       {
         remoteId: 'o1-extra',
         name: 'Unreal 素材包',
-        engine: 'unreal',
         keys: [{ remoteId: 'o1-extra-key', name: '额外 key' }],
       },
     ]
