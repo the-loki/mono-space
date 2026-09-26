@@ -144,3 +144,57 @@ describe('decideProbeFallback：接口只核对，取码必须走页面', () => 
     expect(result).toMatchObject({ kind: 'unavailable', pause: 'unknown-page' })
   })
 })
+
+/**
+ * 真实页面抓下来的两条候选（2026-09-26 取自 /downloads?key=52YH6x4ubXAB5qwr）。
+ *
+ * 保留原因：**揭示路径曾经是死的** —— 探测脚本用 `closest('tr')`，而订单页是 div、没有 tr，
+ * 回退到 parentElement 只拿到「只有码」的那层，资产名不在 rowText 里；再叠加 driver 只传机器名，
+ * 于是永远定位不到控件、每次都「交人工」。这两条 fixture 把这个坑钉住。
+ */
+const REAL_PAGE_CANDIDATES: RevealCandidate[] = [
+  {
+    x: 1,
+    y: 1,
+    visible: true,
+    controlText: '6ZVZW-99C3F-HR9Z4-E5WXZ',
+    rowText:
+      'Astronauts (Pack)\n6ZVZW-99C3F-HR9Z4-E5WXZ\nRedemption Instructions\n\n兑换截止时间是 2027年4月30日 GMT-7 11:00:00。您还剩余 216 天！',
+  },
+  {
+    x: 2,
+    y: 2,
+    visible: true,
+    controlText: '643BT-M3GQM-EPKZZ-DWF2U',
+    rowText:
+      'Creatures Insects (Pack)\n643BT-M3GQM-EPKZZ-DWF2U\nRedemption Instructions\n\n兑换截止时间是 2027年4月30日 GMT-7 11:00:00。您还剩余 216 天！',
+  },
+]
+
+describe('揭示控件定位：订单页是 div 不是表格（实测）', () => {
+  it('探测脚本要把 rowText 抓到含资产名的那层（.key-redeemer，不只是 parentElement）', () => {
+    const script = buildRevealProbeScript()
+    expect(script).toContain('.key-redeemer')
+    expect(script).toContain('tr')
+  })
+
+  it('按**显示名**能命中，并且判为已揭示（不需点击）', () => {
+    const hit = pickRevealCandidate(REAL_PAGE_CANDIDATES, {
+      name: 'Astronauts (Pack)',
+      keytype: 'astronautspack_fab',
+      keyindex: 0,
+    })
+    expect(hit).toBeDefined()
+    expect(readCellState(hit as RevealCandidate)).toBe('revealed')
+    expect(extractKeyCode((hit as RevealCandidate).controlText)).toBe('6ZVZW-99C3F-HR9Z4-E5WXZ')
+  })
+
+  it('只给机器名命中不了（这就是原先揭示一直「交人工」的原因）', () => {
+    expect(
+      pickRevealCandidate(REAL_PAGE_CANDIDATES, {
+        name: 'astronautspack_fab',
+        keytype: 'astronautspack_fab',
+      }),
+    ).toBeUndefined()
+  })
+})

@@ -132,7 +132,8 @@ export async function runReveal(keyId: number): Promise<TaskIpcResult> {
   if (!detail) throw new Error(`key 不存在：${keyId}`)
 
   const { keytype, keyindex } = parseKeyRemoteId(detail.keyRemoteId, detail.bundleRemoteId)
-  const input = { keyId, gamekey: detail.orderRemoteId, keytype, keyindex }
+  // name 必须带上：页面上认控件靠显示名（见 RevealInput.name 的说明）。
+  const input = { keyId, gamekey: detail.orderRemoteId, keytype, keyindex, name: detail.name }
 
   const storeSession = getStoreSession()
   // 揭示是「操作页面」：打开这一单的专属页（无分页），页面上的揭示控件本身就是入口。

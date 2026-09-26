@@ -119,7 +119,7 @@ export function isRevealPlaceholder(text: string): boolean {
 /**
  * 从一段文本里抽密钥。
  *
- * 先剔掉说明/截止时间等噪音再匹配；抽不到返回 null（调用方据此走接口兜底）。
+ * 先剔掉说明/截止时间等噪音再匹配；抽不到返回 null（调用方据此交人工，**不从接口取码**）。
  */
 export function extractKeyCode(text: string): string | null {
   if (!text) return null
@@ -148,7 +148,7 @@ function normalize(value: string | null | undefined): string {
  *
  * 匹配优先级：资产名命中 > 包名命中。**命中多个时返回第一个可见的**——
  * 同一资产包里有多个 key（不同 keyindex）时页面只显示资产名，无法从文案区分，
- * 所以这种情况交给**接口兜底**去确认（见 `page-driver.ts` 的 probe）。
+ * 所以这种情况交给**接口核对**去确认（见 `page-driver.ts` 的 crossCheckViaApi）。
  */
 export function pickRevealCandidate(
   candidates: readonly RevealCandidate[],
@@ -179,7 +179,9 @@ export function buildRevealProbeScript(selector = '.keyfield-value'): string {
   return `(() => {
   const controls = Array.from(document.querySelectorAll(${JSON.stringify(selector)}));
   return controls.map((el) => {
-    const row = el.closest('tr') || el.parentElement;
+    // 行容器：密钥页是 <tr>，订单页是 <div class="key-redeemer">（实测该页**没有 tr**，
+    // 只回退到 parentElement 会拿到「只有码」的那层，导致资产名匹配不上）。
+    const row = el.closest('tr, .key-redeemer') || el.parentElement;
     const rect = el.getBoundingClientRect();
     return {
       x: rect.left + rect.width / 2,

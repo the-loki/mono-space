@@ -30,6 +30,7 @@ import {
   parseProbeResult,
   pickRevealCandidate,
   type RevealCandidate,
+  type RevealIdentity,
   readCellState,
 } from './page-reader'
 
@@ -56,6 +57,18 @@ async function probePage(window: BrowserWindow): Promise<RevealCandidate[]> {
   }).catch(() => null)
   if (!response || response.exceptionDetails) return []
   return parseProbeResult(response.result?.value)
+}
+
+/**
+ * 页面认控件的身份。**必须带资产显示名**（`name`）——页面渲染的是显示名，
+ * 光有机器名 `keytype` 会一直匹配不到（实测行文本里没有机器名）。
+ */
+function identityOf(input: RevealInput): RevealIdentity {
+  return {
+    name: input.name ?? null,
+    keytype: input.keytype,
+    keyindex: input.keyindex,
+  }
 }
 
 /** 按 `keytype` + `keyindex` 在订单详情里找那条 tpk（与 `mapKey` 的 remoteId 构造一致）。 */
@@ -138,11 +151,7 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
 
     async probe(input: RevealInput): Promise<ProbeResult> {
       const candidates = await probePage(window)
-      const candidate = pickRevealCandidate(candidates, {
-        name: input.keytype,
-        keytype: input.keytype,
-        keyindex: input.keyindex,
-      })
+      const candidate = pickRevealCandidate(candidates, identityOf(input))
 
       if (candidate) {
         const state = readCellState(candidate)
@@ -163,11 +172,7 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
 
     async submit(input: RevealInput) {
       const candidates = await probePage(window)
-      const candidate = pickRevealCandidate(candidates, {
-        name: input.keytype,
-        keytype: input.keytype,
-        keyindex: input.keyindex,
-      })
+      const candidate = pickRevealCandidate(candidates, identityOf(input))
       if (!candidate) {
         return { kind: 'failed', retryable: false, message: '定位不到揭示控件，已放弃点击' }
       }
@@ -201,11 +206,7 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
      */
     async reRead(input: RevealInput): Promise<string | null> {
       const candidates = await probePage(window)
-      const candidate = pickRevealCandidate(candidates, {
-        name: input.keytype,
-        keytype: input.keytype,
-        keyindex: input.keyindex,
-      })
+      const candidate = pickRevealCandidate(candidates, identityOf(input))
       if (!candidate) return null
       return extractKeyCode(candidate.controlText) ?? extractKeyCode(candidate.rowText)
     },

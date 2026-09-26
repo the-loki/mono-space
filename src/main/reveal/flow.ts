@@ -24,6 +24,14 @@ export interface RevealInput {
   /** 资产包 machine_name（`tpk.machine_name`）。 */
   keytype: string
   keyindex: number
+  /**
+   * 资产显示名（台账 `key.name`）。
+   *
+   * **页面上认控件必须靠它**：页面渲染的是「Astronauts (Pack)」这种人看的名字，
+   * 而 `keytype` 是机器名（`astronautspack_fab`）——实测行文本里**没有**机器名，
+   * 只拿 keytype 去匹配会永远匹配不到（揭示路径会一直「交人工」）。
+   */
+  name?: string | null
 }
 
 export type PrecheckResult = { ok: true } | { ok: false; detail: string; pause: PauseReason }
