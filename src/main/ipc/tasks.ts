@@ -64,7 +64,18 @@ async function runLogin(): Promise<LoginWindowResult[]> {
 }
 
 /** Humble 的 key 列表页（揭示入口）。 */
-export const HUMBLE_KEYS_URL = 'https://www.humblebundle.com/home/keys'
+/**
+ * 某一单的专属页：**只列这一单的 key、没有分页**（实测 `/download?key=` 会 302 到这里）。
+ *
+ * 为什么揭示走它而不是 `/home/keys`：密钥页有 48 页分页、952 个 key 挤在一起，要在里面认出
+ * 「这一条」的控件既慢又容易认错（认错就会点到别的 key —— 不可逆）。订单页只有这一单的条目，
+ * 定位可靠得多；而且**已揭示的 key 在这个页面上本来就直接显示码**，不需要点。
+ *
+ * 约束：码只从页面读（见 `page-reader.ts` 的 `CrossCheckState`），接口只做核对与查缺口。
+ */
+export function humbleOrderUrl(gamekey: string): string {
+  return `https://www.humblebundle.com/downloads?key=${encodeURIComponent(gamekey)}`
+}
 /** Epic 账号兑换页（`#12`）。 */
 export const EPIC_REDEEM_URL = 'https://www.epicgames.com/account/code-redemption'
 
@@ -124,15 +135,18 @@ export async function runReveal(keyId: number): Promise<TaskIpcResult> {
   const input = { keyId, gamekey: detail.orderRemoteId, keytype, keyindex }
 
   const storeSession = getStoreSession()
-  // 揭示是「操作页面」：不需要装扩展，打开密钥页就行——页面上的揭示控件本身就是入口。
-  const view = await openStoreView(storeSession, HUMBLE_KEYS_URL, { show: true, exclusive: true })
+  // 揭示是「操作页面」：打开这一单的专属页（无分页），页面上的揭示控件本身就是入口。
+  const view = await openStoreView(storeSession, humbleOrderUrl(detail.orderRemoteId), {
+    show: true,
+    exclusive: true,
+  })
 
   return revealOne(
     input,
     createRevealPorts({
       window: getPage(view.id),
       repository,
-      // 接口兜底：页面读不到码时用只读 GET 的 redeemed_key_val 补偿。
+      // 只读客户端：仅用于**核对**（这条 key 是否已揭示）与**查缺口**，不用于取码。
       client: createDefaultSyncClient(storeSession),
     }),
   )
