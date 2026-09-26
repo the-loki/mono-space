@@ -383,6 +383,8 @@ describe('keys_ingest 的输出 schema 内置在应用侧，且平台证据必�
     }
     const keys = parameters.properties.keys.items
     expect(keys.required).toContain('redemptionUrl')
+    // 空串不算通过：实测 agent 被必填逼着交 \"\" 充数，那比 null 更糟。
+    expect((keys.properties?.redemptionUrl as { minLength?: number })?.minLength).toBe(1)
     // platform 不再作为入参：平台由应用从链接解析（不信调用方自报）。
     expect(Object.keys(keys.properties ?? {})).not.toContain('platform')
   })

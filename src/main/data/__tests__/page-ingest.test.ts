@@ -202,3 +202,37 @@ describe('平台逐条判断（用户明确：同一订单页可能混多个平�
     expect(order.bundles[0]?.keys[0]?.platform).toBe('unknown')
   })
 })
+
+describe('平台解析的诚实性（实测教训）', () => {
+  it('空串归 unknown（不是平台，也不能算通过）', () => {
+    expect(parsePlatform('')).toBe('unknown')
+    expect(parsePlatform('   ')).toBe('unknown')
+  })
+
+  it('明确写「无」归 unknown —— 给 agent 一个说不知道的口子，好过让它编', () => {
+    for (const marker of ['无', 'None', 'N/A', '-', '—']) {
+      expect(parsePlatform(marker)).toBe('unknown')
+    }
+  })
+
+  it('只有数字 ID、没有 slug 的文章链接归 unknown（Humble 的文章链接大量如此）', () => {
+    expect(parsePlatform('https://support.humblebundle.com/hc/en-us/articles/14325363915931')).toBe(
+      'unknown',
+    )
+    expect(parsePlatform('https://support.humblebundle.com/hc/articles/360020257973')).toBe(
+      'unknown',
+    )
+  })
+
+  it('带 slug 的老格式链接仍能解析出平台', () => {
+    expect(
+      parsePlatform(
+        'https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem',
+      ),
+    ).toBe('epic')
+  })
+
+  it('无关域名不猜平台', () => {
+    expect(parsePlatform('https://www.gamedevmarket.net/')).toBe('unknown')
+  })
+})

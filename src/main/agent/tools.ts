@@ -214,11 +214,15 @@ function createDomainTools(host: McpHost): ToolSpec[] {
             name: Type.String({ description: '资产显示名（页面上那一行的名字）' }),
             revealed: Type.Boolean({ description: '页面是否已揭示（能看到码为 true）' }),
             code: Type.Optional(Type.String({ description: '已揭示时从页面读到的密钥明文' })),
-            // **必填**：平台由应用从这个链接解析（输出 schema 内置在应用侧），
-            // 所以 agent 只交原始证据，不许自己编平台名、也不许省略。
+            // **必填且非空**：平台由应用从这个链接解析（输出 schema 内置在应用侧）。
+            // 空串不算通过 —— 页面上确实没有兑换链接时要**明确**写「无」，不许蒙混过关：
+            // 实测过 agent 被必填逼着交 `""`、或把页脚/通用的帮助链接拿来充数，
+            // 那比 null 更糟（null 是「不知道」，充数是「编了一个看起来像答案的东西」）。
             redemptionUrl: Type.String({
+              minLength: 1,
               description:
                 '这一行「Redemption Instructions」链接的 href（**必填**）。' +
+                '页面上确实没有这一行的兑换链接时，写「无」；**不要**把页面上别处（页脚、通用帮助）的链接拿来充数。' +
                 '平台由应用解析，你不需要（也不要）自己判断平台名。逐行给，因为同一页可能混多个平台。',
             }),
           }),

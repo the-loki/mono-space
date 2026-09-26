@@ -44,9 +44,19 @@ function articleNameOf(value: string): string {
   return segment.replace(/^\d+-/, '')
 }
 
+/**
+ * agent 在「这一行没有兑换链接」时该交的明确标记。
+ *
+ * 实测：页面本身就不带平台信息的订单很多（第三方 key 行只有名字+码）。
+ * 逼着 agent 必填会让它拿空串或页面上别处的链接充数 —— 那比「不知道」更糟，
+ * 所以给一个**明确说不知道**的口子，好过让它编。
+ */
+const NO_LINK_MARKERS = ['无', 'none', 'n/a', 'na', '-', '—', 'unknown']
+
 export function parsePlatform(value: string | null | undefined): Platform {
   const raw = (value ?? '').trim()
   if (!raw) return 'unknown'
+  if (NO_LINK_MARKERS.includes(raw.toLowerCase())) return 'unknown'
   const haystack = articleNameOf(raw).toLowerCase()
   for (const { token, platform } of PLATFORM_TOKENS) {
     if (token.test(haystack)) return platform
