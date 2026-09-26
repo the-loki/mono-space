@@ -59,3 +59,24 @@ status: accepted
 - 与 ADR-0001 / 0002 不冲突：本条只管**数据来源**，不改浏览器与网络身份的既有决策。
 
 证据与实测校准见 `docs/verify/19-v1-acceptance.md`（订单页真实 DOM、控件链、异步渲染）。
+
+## 追加：平台（platform）**逐条判断**，不是每单一值
+
+用户补充（2026-09-26）：
+
+> 「有时候同一个订单页有多个平台的内容，需要 agent 判断」
+
+同一张订单页里可能同时有多个平台的 key（例如一部分 Steam、一部分 Epic）。因此：
+
+- **平台是 key 级属性**，不是订单级、也不是资产包级。`keys_ingest` 的每条 key **各自带 platform**。
+- **判定依据是那一行自己的**「Redemption Instructions」链接，而不是页面级的某一个。实测该链接形如：
+
+      https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem
+                                                                        ^^^^^^^^^^^^^^^^^^^^^^ → epic
+
+  解析文章 slug 得到平台（`fab` / `epic` / `steam` / `unity` / `gog` …），认不出的一律 `未知`。
+- **由 agent 逐行读、逐行判**：代码不做「一页取一次」的假设。页面结构允许混排，代码就无法替它判断。
+
+这条同时说明了**为什么界面不该显示「引擎」**：引擎来自接口的 `machine_name` 后缀（`_fab` / `_unity`），
+而页面读取的 key **没有 machine_name** —— 引擎在页面驱动下永远推不出来（只会是「未知引擎」）。
+平台则相反：页面链接里就有，但**只有逐条读才拿得准**。
