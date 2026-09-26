@@ -27,20 +27,26 @@ export const LEDGER_FILTER_LABELS: Record<LedgerFilter, string> = {
  * 把筛选与分页映射成仓储查询。
  *
  * `view: 'all'` 也会显式带上，仓储对未知 / all 视图按无附加条件处理。
+ * `orderRemoteId` 只在非空时带上（明细视图才需要，主视图不要这条条件）。
  */
 export function filterToQuery(
   filter: LedgerFilter,
   page = 0,
   pageSize: number = LEDGER_PAGE_SIZE,
+  orderRemoteId?: string,
 ): LedgerQuery {
-  return {
+  const query: LedgerQuery = {
     view: filter,
     limit: pageSize,
     offset: pageOffset(page, pageSize),
   }
+  if (orderRemoteId) query.orderRemoteId = orderRemoteId
+  return query
 }
 
 /** 只取视图条件的查询（用于 count，分页字段无意义）。 */
-export function filterToCountQuery(filter: LedgerFilter): LedgerQuery {
-  return { view: filter }
+export function filterToCountQuery(filter: LedgerFilter, orderRemoteId?: string): LedgerQuery {
+  const query: LedgerQuery = { view: filter }
+  if (orderRemoteId) query.orderRemoteId = orderRemoteId
+  return query
 }

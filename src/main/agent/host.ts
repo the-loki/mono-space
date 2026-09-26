@@ -227,6 +227,7 @@ export function createMcpHost(): McpHost {
         | 'redeemed'
       const page = repository.listKeys({
         view,
+        orderRemoteId: input.orderRemoteId,
         limit: input.limit ?? 50,
         offset: input.offset ?? 0,
       })

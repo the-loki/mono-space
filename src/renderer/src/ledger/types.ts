@@ -11,6 +11,9 @@ type LedgerApi = Window['api']['ledger']
 /** 台账列表项（不含兑换码明文）。 */
 export type LedgerListItem = Awaited<ReturnType<LedgerApi['list']>>['items'][number]
 
+/** 订单列表项（订单主视图）：带 key 计数。 */
+export type OrderSummary = Awaited<ReturnType<LedgerApi['orders']>>[number]
+
 /** 分页结果。 */
 export type LedgerPage = Awaited<ReturnType<LedgerApi['list']>>
 

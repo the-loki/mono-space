@@ -34,9 +34,10 @@ function describe(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-/** 拉取台账数据。筛选变化会重置缓存并重新取总数。 */
+/** 拉取台账数据。筛选（或订单过滤）变化会重置缓存并重新取总数。 */
 export function useLedgerData(
   filter: LedgerFilter,
+  orderRemoteId?: string,
   pageSize: number = LEDGER_PAGE_SIZE,
 ): LedgerData {
   const [total, setTotal] = useState(0)
@@ -61,7 +62,7 @@ export function useLedgerData(
     setError(null)
 
     window.api.ledger
-      .count(filterToCountQuery(filter))
+      .count(filterToCountQuery(filter, orderRemoteId))
       .then((value) => {
         if (current !== generation.current) return
         setTotal(value)
@@ -72,7 +73,7 @@ export function useLedgerData(
         setError(describe(cause))
         setStatus('error')
       })
-  }, [filter, reloadToken])
+  }, [filter, orderRemoteId, reloadToken])
 
   const ensurePages = useCallback(
     (wanted: readonly number[]) => {
@@ -81,7 +82,7 @@ export function useLedgerData(
         if (requestedPages.current.has(page) || pages.has(page)) continue
         requestedPages.current.add(page)
         window.api.ledger
-          .list(filterToQuery(filter, page, pageSize))
+          .list(filterToQuery(filter, page, pageSize, orderRemoteId))
           .then((result) => {
             if (current !== generation.current) return
             setPages((previous) => {
@@ -98,7 +99,7 @@ export function useLedgerData(
           })
       }
     },
-    [filter, pageSize, pages],
+    [filter, orderRemoteId, pageSize, pages],
   )
 
   const rowAt = useCallback(

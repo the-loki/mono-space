@@ -7,10 +7,13 @@
 import { ipcMain } from 'electron'
 import { agentPaths, readAgentConfig } from '../agent/config'
 import { createAgentLogBuffer } from '../agent/log-buffer'
+import { readOrderKeysPrompt, revealKeyPrompt } from '../agent/prompts'
 import { createEmbeddedAgent } from '../agent/session'
 import type { McpHost } from '../agent/tools'
 
-export const AGENT_RUN_CHANNEL = 'agent:run'
+// 内置任务：提示词与输出 schema 都在主进程侧，渲染层只传标识（gamekey / keyId）。
+export const AGENT_READ_ORDER_KEYS_CHANNEL = 'agent:read-order-keys'
+export const AGENT_REVEAL_KEY_CHANNEL = 'agent:reveal-key'
 export const AGENT_STATUS_CHANNEL = 'agent:status'
 export const AGENT_LOG_CHANNEL = 'agent:log'
 export const AGENT_LOG_CLEAR_CHANNEL = 'agent:log-clear'
@@ -103,12 +106,26 @@ export async function runAgent(options: {
 
 /** 注册 agent IPC。重复调用安全。`getHost` 惰性取 host（它依赖浏览器窗口是否已就绪）。 */
 export function registerAgentIpc(options: { userDataDir: string; getHost: () => McpHost }): void {
-  ipcMain.removeHandler(AGENT_RUN_CHANNEL)
+  ipcMain.removeHandler(AGENT_READ_ORDER_KEYS_CHANNEL)
+  ipcMain.removeHandler(AGENT_REVEAL_KEY_CHANNEL)
   ipcMain.removeHandler(AGENT_STATUS_CHANNEL)
   ipcMain.removeHandler(AGENT_LOG_CHANNEL)
   ipcMain.removeHandler(AGENT_LOG_CLEAR_CHANNEL)
-  ipcMain.handle(AGENT_RUN_CHANNEL, (_event, prompt: string) =>
-    runAgent({ prompt, userDataDir: options.userDataDir, host: options.getHost() }),
+  // 按订单读 key：渲染层只传 gamekey，提示词在这里拼。
+  ipcMain.handle(AGENT_READ_ORDER_KEYS_CHANNEL, (_event, gamekey: string) =>
+    runAgent({
+      prompt: readOrderKeysPrompt(gamekey),
+      userDataDir: options.userDataDir,
+      host: options.getHost(),
+    }),
+  )
+  // 揭示单条 key：同样只传 keyId。
+  ipcMain.handle(AGENT_REVEAL_KEY_CHANNEL, (_event, keyId: number) =>
+    runAgent({
+      prompt: revealKeyPrompt(keyId),
+      userDataDir: options.userDataDir,
+      host: options.getHost(),
+    }),
   )
   ipcMain.handle(AGENT_STATUS_CHANNEL, () => agentStatus(options.userDataDir))
   // 最新在前的快照；空数组表示还没跑过（或刚被清空）。

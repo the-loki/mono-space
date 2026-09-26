@@ -52,8 +52,3 @@ function toResponse(reply: MockReply): HttpResponseLike {
     },
   }
 }
-
-/** 从 URL 里截出 gamekey。 */
-export function gamekeyFromUrl(url: string): string {
-  return /\/api\/v1\/order\/([^?]+)/.exec(url)?.[1] ?? ''
-}

@@ -30,6 +30,7 @@ import {
   type LedgerView,
   type OrderSnapshotInput,
   type OrderSnapshotRecord,
+  type OrderSummary,
   type Platform,
   type RedeemStatus,
   type RevealStatus,
@@ -147,9 +148,14 @@ export class LedgerRepository {
 
     if (existing) {
       const id = Number(existing.id)
+      // COALESCE：同步只给 gamekey（其余字段是 undefined→null），不能把页面写入的
+      // 商品名 / 购买时间 / 币种覆盖掉（ADR-0003：页面是 key 与资产包的权威来源）。
       this.stmt(
         `UPDATE orders
-           SET product_name = ?, purchased_at = ?, currency = ?, raw_json = ?,
+           SET product_name = COALESCE(?, product_name),
+               purchased_at = COALESCE(?, purchased_at),
+               currency = COALESCE(?, currency),
+               raw_json = ?,
                last_seen_at = ?, updated_at = ?
          WHERE id = ?`,
       ).run(
@@ -194,9 +200,11 @@ export class LedgerRepository {
 
     if (existing) {
       const id = Number(existing.id)
+      // 同 upsertOrder：同步不再建资产包，页面重读也可能某次没带分组名，别把已有名字清掉。
       this.stmt(
         `UPDATE engine_asset_bundles
-           SET name = ?, publisher = ?, raw_json = ?, updated_at = ?
+           SET name = COALESCE(?, name), publisher = COALESCE(?, publisher),
+               raw_json = ?, updated_at = ?
          WHERE id = ?`,
       ).run(nullable(bundle.name), nullable(bundle.publisher), rawJson, now, id)
       return { id, inserted: false }
@@ -376,6 +384,33 @@ export class LedgerRepository {
     return row ? mapKeyDetail(row as Record<string, SQLOutputValue>) : undefined
   }
 
+  /**
+   * 列出全部订单及其 key 计数。
+   *
+   * 必须用 LEFT JOIN：订单在「页面读入 key」之前 key 数为 0，但也要出现在订单列表里，
+   * 否则同步完的订单在主视图上会凭空消失（ADR-0003：接口只建订单、key 靠页面补）。
+   */
+  listOrders(): OrderSummary[] {
+    const rows = this.stmt(
+      `SELECT
+              o.id AS order_id,
+              o.account_id AS account_id,
+              o.remote_id AS order_remote_id,
+              o.product_name AS product_name,
+              o.purchased_at AS purchased_at,
+              COUNT(k.id) AS key_count,
+              COUNT(CASE WHEN k.reveal_status = 'unrevealed' THEN 1 END) AS unrevealed_count,
+              COUNT(CASE WHEN k.reveal_status = 'revealed' THEN 1 END) AS revealed_count
+       FROM orders o
+       LEFT JOIN engine_asset_bundles b ON b.order_id = o.id
+       LEFT JOIN keys k ON k.bundle_id = b.id
+       WHERE o.account_id = ?
+       GROUP BY o.id
+       ORDER BY o.id ASC`,
+    ).all(this.accountId)
+    return (rows as Record<string, SQLOutputValue>[]).map(mapOrderSummary)
+  }
+
   // -------------------------------------------------------------- 快照
 
   /** 保存订单快照；与最近一份内容相同则直接返回既有记录（去重）。 */
@@ -504,6 +539,10 @@ export class LedgerRepository {
     const params: SQLInputValue[] = [this.accountId]
 
     applyView(query.view, conditions)
+    if (query.orderRemoteId && query.orderRemoteId.trim().length > 0) {
+      conditions.push('o.remote_id = ?')
+      params.push(query.orderRemoteId.trim())
+    }
     if (query.revealStatus) {
       conditions.push('k.reveal_status = ?')
       params.push(query.revealStatus)
@@ -585,6 +624,21 @@ function mapKeyListItem(row: Record<string, SQLOutputValue>): KeyListItem {
 
 function mapKeyDetail(row: Record<string, SQLOutputValue>): KeyDetail {
   return { ...mapKeyListItem(row), redeemCode: text(row.redeem_code) }
+}
+
+function mapOrderSummary(row: Record<string, SQLOutputValue>): OrderSummary {
+  const keyCount = Number(row.key_count)
+  return {
+    accountId: text(row.account_id) ?? DEFAULT_ACCOUNT_ID,
+    orderId: Number(row.order_id),
+    orderRemoteId: text(row.order_remote_id) ?? '',
+    productName: text(row.product_name),
+    purchasedAt: text(row.purchased_at),
+    keyCount,
+    unrevealedCount: Number(row.unrevealed_count),
+    revealedCount: Number(row.revealed_count),
+    hasPageKeys: keyCount > 0,
+  }
 }
 
 function mapSnapshot(row: Record<string, SQLOutputValue>): OrderSnapshotRecord {

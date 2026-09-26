@@ -159,20 +159,25 @@ describe('parameters 是合法的 TypeBox 对象（Pi SDK 要求）', () => {
 
     const query = toolNamed(`${TOOL_PREFIX}ledger_query`).parameters
     expect(query.type).toBe('object')
-    for (const key of ['view', 'limit', 'offset']) {
+    for (const key of ['view', 'orderRemoteId', 'limit', 'offset']) {
       expect(Object.keys(query.properties)).toContain(key)
     }
-    // limit 原本是 optional，不能被标成必填。
+    // limit / orderRemoteId 原本是 optional，不能被标成必填。
     expect(query.required ?? []).not.toContain('limit')
+    expect(query.required ?? []).not.toContain('orderRemoteId')
   })
 })
 
 describe('工具行为', () => {
-  it('ledger_query 转发查询参数', async () => {
+  it('ledger_query 转发查询参数（含按订单过滤）', async () => {
     const host = fakeHost()
-    await toolNamed(`${TOOL_PREFIX}ledger_query`, host).run({ view: 'unrevealed', limit: 10 })
+    await toolNamed(`${TOOL_PREFIX}ledger_query`, host).run({
+      view: 'unrevealed',
+      orderRemoteId: 'gk-1',
+      limit: 10,
+    })
     expect(host.ledgerQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ view: 'unrevealed', limit: 10 }),
+      expect.objectContaining({ view: 'unrevealed', orderRemoteId: 'gk-1', limit: 10 }),
     )
   })
 

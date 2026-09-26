@@ -138,3 +138,83 @@ describe('揭示 / 兑换双状态', () => {
     repo.close()
   })
 })
+
+describe('订单列表查询（带 key 计数）', () => {
+  it('没读过 key 的订单也出现（LEFT JOIN），计数为 0', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([{ remoteId: 'order-empty', bundles: [] }, sampleOrder()])
+
+    const orders = repo.listOrders()
+
+    expect(orders.map((order) => order.orderRemoteId)).toEqual(['order-empty', 'order-1'])
+    const empty = orders.find((order) => order.orderRemoteId === 'order-empty')
+    expect(empty).toEqual({
+      accountId: 'default',
+      orderId: expect.any(Number),
+      orderRemoteId: 'order-empty',
+      productName: null,
+      purchasedAt: null,
+      keyCount: 0,
+      unrevealedCount: 0,
+      revealedCount: 0,
+      hasPageKeys: false,
+    })
+
+    const full = orders.find((order) => order.orderRemoteId === 'order-1')
+    expect(full).toMatchObject({
+      productName: 'Humble 开发资产包',
+      purchasedAt: '2026-09-01T00:00:00.000Z',
+      keyCount: 3,
+      unrevealedCount: 3,
+      revealedCount: 0,
+      hasPageKeys: true,
+    })
+    repo.close()
+  })
+
+  it('揭示 / 兑换后计数随状态变化', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([sampleOrder()])
+    const [a, b] = repo.listKeys().items
+    repo.markRevealed(a?.id as number, 'CODE-A', '2026-09-02T00:00:00.000Z')
+    repo.setRedeemStatus(a?.id as number, 'redeemed', '2026-09-03T00:00:00.000Z')
+    repo.markRevealed(b?.id as number, 'CODE-B', '2026-09-02T00:00:00.000Z')
+
+    const [order] = repo.listOrders()
+    expect(order).toMatchObject({ keyCount: 3, unrevealedCount: 1, revealedCount: 2 })
+    repo.close()
+  })
+})
+
+describe('台账按订单过滤（D3）', () => {
+  it('给了 orderRemoteId 就只算这一单，不给就是全部', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      sampleOrder(),
+      {
+        remoteId: 'order-2',
+        productName: '另一单',
+        bundles: [{ remoteId: 'bundle-2', keys: [{ remoteId: 'key-2', name: '另一资产的 key' }] }],
+      },
+    ])
+
+    expect(repo.countKeys()).toBe(4)
+    expect(repo.countKeys({ orderRemoteId: 'order-1' })).toBe(3)
+    expect(
+      repo.listKeys({ orderRemoteId: 'order-2' }).items.map((item) => item.keyRemoteId),
+    ).toEqual(['key-2'])
+    // 订单过滤与四个筛选可叠加。
+    const [first] = repo.listKeys({ orderRemoteId: 'order-1' }).items
+    repo.markRevealed(first?.id as number, 'CODE-X')
+    expect(repo.countKeys({ orderRemoteId: 'order-1', view: 'unrevealed' })).toBe(2)
+    expect(repo.countKeys({ orderRemoteId: 'order-2', view: 'unrevealed' })).toBe(1)
+    repo.close()
+  })
+
+  it('空白 orderRemoteId 视为不过滤', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([sampleOrder()])
+    expect(repo.countKeys({ orderRemoteId: '   ' })).toBe(3)
+    repo.close()
+  })
+})

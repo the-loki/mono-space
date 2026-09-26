@@ -5,22 +5,7 @@ import { runHumbleSync, sessionFetch } from '../sync'
 /** 假 client：只实现 runSync 会用到的方法。 */
 function fakeClient(overrides: Record<string, unknown> = {}) {
   return {
-    listOrderGamekeys: vi.fn(async () => ['gk-1']),
-    fetchOrdersPaged: vi.fn(async () => [
-      {
-        gamekey: 'gk-1',
-        // 注意：不能是 game/software/ebook 分类，否则被 map-order 跳过（#22 分桶规则）。
-        product: {
-          machine_name: 'unity_asset_bundle',
-          human_name: 'Rock Asset Pack',
-          category: 'bundle',
-        },
-        subproducts: [],
-        tpkd_dict: {
-          all_tpks: [{ machine_name: 'unity_asset_bundle', keyindex: 0, key_type: 'unity_asset' }],
-        },
-      },
-    ]),
+    listOrders: vi.fn(async () => [{ gamekey: 'gk-1' }]),
     ...overrides,
   } as never
 }
@@ -35,8 +20,8 @@ function fakeRepository() {
         calls.push('apply')
         return {
           orders: { inserted: 1, updated: 0 },
-          bundles: { inserted: 1, updated: 0 },
-          keys: { inserted: 1, updated: 0 },
+          bundles: { inserted: 0, updated: 0 },
+          keys: { inserted: 0, updated: 0 },
         }
       },
       saveSnapshot: () => {
@@ -55,9 +40,9 @@ describe('runHumbleSync', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.report.orderCount).toBe(1)
-      expect(result.report.mappedOrderCount).toBe(1)
-      expect(result.report.keyCount).toBe(1)
-      expect(result.report.write.keys.inserted).toBe(1)
+      // 同步只建订单（key 由页面读取）。
+      expect(result.report.write.orders.inserted).toBe(1)
+      expect(result.report.write.keys.inserted).toBe(0)
       expect(result.report.snapshotId).toBe(1)
     }
     expect(calls).toEqual(['apply', 'snapshot'])
@@ -66,7 +51,7 @@ describe('runHumbleSync', () => {
   it('未登录（HumbleError unauthorized）→ 明确提示，而不是静默失败', async () => {
     const { repo } = fakeRepository()
     const client = fakeClient({
-      listOrderGamekeys: vi.fn(async () => {
+      listOrders: vi.fn(async () => {
         throw new HumbleError('unauthorized', 'Humble 会话失效（401）')
       }),
     })
@@ -81,7 +66,7 @@ describe('runHumbleSync', () => {
   it('其它错误 → reason=error 并带上原始信息', async () => {
     const { repo } = fakeRepository()
     const client = fakeClient({
-      listOrderGamekeys: vi.fn(async () => {
+      listOrders: vi.fn(async () => {
         throw new Error('网线被拔了')
       }),
     })

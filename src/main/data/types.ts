@@ -144,10 +144,32 @@ export interface KeyQuery {
   view?: LedgerView
   revealStatus?: RevealStatus
   redeemStatus?: RedeemStatus
+  /** 按订单过滤（订单 gamekey）。不给＝全部订单。 */
+  orderRemoteId?: string
   /** 名称模糊匹配（key 名或订单名）。 */
   search?: string
   limit?: number
   offset?: number
+}
+
+/**
+ * 订单列表项（带 key 计数）：界面主视图用。
+ *
+ * 同步只提供 gamekey，商品名 / 购买时间要等页面读过才有，所以它们可能为 null；
+ * 同理订单在读过页面前 keyCount 为 0，也必须出现在列表里（查询用 LEFT JOIN）。
+ */
+export interface OrderSummary {
+  accountId: string
+  orderId: number
+  orderRemoteId: string
+  productName: string | null
+  purchasedAt: string | null
+  /** 该订单下的 key 总数。 */
+  keyCount: number
+  unrevealedCount: number
+  revealedCount: number
+  /** 是否已从页面读过 key（= 有任何 key）。 */
+  hasPageKeys: boolean
 }
 
 /** 分页结果。 */

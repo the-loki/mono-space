@@ -45,6 +45,8 @@ export interface MonoSpaceLedgerKeyQuery {
   view?: 'all' | 'unrevealed' | 'revealed_unredeemed' | 'redeemed'
   revealStatus?: MonoSpaceLedgerKeyListItem['revealStatus']
   redeemStatus?: MonoSpaceLedgerKeyListItem['redeemStatus']
+  /** 按订单过滤（订单 gamekey）。不给＝全部订单。 */
+  orderRemoteId?: string
   search?: string
   limit?: number
   offset?: number
@@ -58,6 +60,22 @@ export interface MonoSpaceLedgerKeyPage {
   offset: number
 }
 
+/**
+ * 订单列表项（订单主视图）：带 key 计数。
+ * 商品名 / 购买时间在「页面读过之前」为 null；key 计数此时为 0。
+ */
+export interface MonoSpaceLedgerOrderSummary {
+  accountId: string
+  orderId: number
+  orderRemoteId: string
+  productName: string | null
+  purchasedAt: string | null
+  keyCount: number
+  unrevealedCount: number
+  revealedCount: number
+  hasPageKeys: boolean
+}
+
 export interface MonoSpaceTaskResult {
   status: string
   pause?: string
@@ -69,9 +87,6 @@ export interface MonoSpaceTaskResult {
 /** 同步报告摘要（渲染进程只关心这几项）。 */
 export interface MonoSpaceSyncSummary {
   orderCount: number
-  mappedOrderCount: number
-  skippedOrderCount: number
-  keyCount: number
   snapshotId: number
 }
 
@@ -134,16 +149,24 @@ export interface MonoSpaceApi {
   ledger: {
     list(query?: MonoSpaceLedgerKeyQuery): Promise<MonoSpaceLedgerKeyPage>
     count(query?: MonoSpaceLedgerKeyQuery): Promise<number>
+    /** 订单主视图：全部订单 + 各自的 key 计数。 */
+    orders(): Promise<MonoSpaceLedgerOrderSummary[]>
     export(format: 'json' | 'csv', query?: MonoSpaceLedgerKeyQuery): Promise<string>
   }
   /** 只读同步：拉 Humble 订单并增量入库。 */
   sync: {
     run(): Promise<MonoSpaceSyncResult>
   }
-  /** 内置 agent：手动触发一次（工具注入自带 Pi，不依赖外部 agent）。 */
+  /**
+   * 内置 agent。**没有自由输入**：提示词与输出 schema 都在主进程侧，
+   * 渲染层只按内置任务传标识（gamekey / keyId）。
+   */
   agent: {
     status(): Promise<MonoSpaceAgentStatus>
-    run(prompt: string): Promise<MonoSpaceAgentRunResult>
+    /** 内置任务：按订单读全部 key 并落库。 */
+    readOrderKeys(gamekey: string): Promise<MonoSpaceAgentRunResult>
+    /** 内置任务：揭示单条 key（不可逆）。 */
+    revealKey(keyId: number): Promise<MonoSpaceAgentRunResult>
     /** 调试日志快照（最新在前）：仅主进程内存，进程内有效。 */
     log(): Promise<MonoSpaceAgentLogEntry[]>
     /** 清空调试日志。 */

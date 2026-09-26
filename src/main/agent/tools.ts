@@ -70,7 +70,13 @@ export interface KeyUpsertEntry {
  */
 export interface McpHost extends BrowserHost {
   ledgerStats(): Promise<LedgerStats>
-  ledgerQuery(input: { view?: string; limit?: number; offset?: number }): Promise<LedgerRow[]>
+  ledgerQuery(input: {
+    view?: string
+    /** 按订单过滤（订单 gamekey）。不给＝全部订单。 */
+    orderRemoteId?: string
+    limit?: number
+    offset?: number
+  }): Promise<LedgerRow[]>
   keyContext(keyId: number): Promise<(LedgerRow & { redeemCode?: string | null }) | null>
   ordersSync(): Promise<unknown>
   keysUpsert(entries: KeyUpsertEntry[]): Promise<UpsertResult>
@@ -139,7 +145,7 @@ function createDomainTools(host: McpHost): ToolSpec[] {
       name: `${TOOL_PREFIX}ledger_query`,
       title: 'MonoSpace 台账查询',
       description:
-        '分页查询 MonoSpace 台账列表（资产名 / 包 / 订单 / 平台 / 揭示与兑换状态）。**不含兑换码明文**；要码请用 key_context。只读。',
+        '分页查询 MonoSpace 台账列表（资产名 / 包 / 订单 / 平台 / 揭示与兑换状态）。**不含兑换码明文**；要码请用 key_context。可用 orderRemoteId 只看某一单。只读。',
       layer: 'L0',
       parameters: Type.Object({
         view: Type.Optional(
@@ -150,12 +156,16 @@ function createDomainTools(host: McpHost): ToolSpec[] {
             Type.Literal('redeemed'),
           ]),
         ),
+        orderRemoteId: Type.Optional(
+          Type.String({ description: '只看某一单（订单 gamekey）。不给则全部订单。' }),
+        ),
         limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
       }),
       run: (input) =>
         host.ledgerQuery({
           view: input.view as string | undefined,
+          orderRemoteId: input.orderRemoteId as string | undefined,
           limit: input.limit as number | undefined,
           offset: input.offset as number | undefined,
         }),
@@ -231,7 +241,7 @@ function createDomainTools(host: McpHost): ToolSpec[] {
       name: `${TOOL_PREFIX}orders_sync`,
       title: 'MonoSpace 同步订单（接口）',
       description:
-        '让 MonoSpace 通过 **Humble 接口**跑一次只读同步：拉取订单列表与详情，增量写入台账（订单 → 资产包 → key）。写入类，会留痕。',
+        '让 MonoSpace 通过 **Humble 接口**跑一次只读同步：只拉取**订单列表**（ADR-0003：接口不提供 key），增量写入台账的订单表。写入类，会留痕。',
       layer: 'L1',
       parameters: Type.Object({}),
       run: () => host.ordersSync(),

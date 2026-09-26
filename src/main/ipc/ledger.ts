@@ -4,17 +4,19 @@
  * 契约（全部经 ipcRenderer.invoke）：
  *   - `ledger:list`   (query: KeyQuery)  -> KeyPage（items 只含 KeyListItem，无兑换码明文）
  *   - `ledger:count`  (query: KeyQuery)  -> number
- *   - `ledger:export` (format, query)    -> string（JSON / CSV 文本，含码，仅按需调用）
+ *   - `ledger:orders` ()                -> OrderSummary[]（订单主视图：全部订单 + key 计数）
+ *   - `ledger:export` (format, query)   -> string（JSON / CSV 文本，含码，仅按需调用）
  *
  * 列表与计数一律经 toKeyListItem 白名单投影，杜绝兑换码明文混入。
  */
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { type LedgerRepository, openLedger } from '../data/repository'
-import type { KeyListItem, KeyPage, KeyQuery } from '../data/types'
+import type { KeyListItem, KeyPage, KeyQuery, OrderSummary } from '../data/types'
 
 export const LEDGER_LIST_CHANNEL = 'ledger:list'
 export const LEDGER_COUNT_CHANNEL = 'ledger:count'
+export const LEDGER_ORDERS_CHANNEL = 'ledger:orders'
 export const LEDGER_EXPORT_CHANNEL = 'ledger:export'
 
 /** 导出格式，与仓储的导出方法一一对应。 */
@@ -77,12 +79,14 @@ export function registerLedgerIpc(): void {
 
   ipcMain.removeHandler(LEDGER_LIST_CHANNEL)
   ipcMain.removeHandler(LEDGER_COUNT_CHANNEL)
+  ipcMain.removeHandler(LEDGER_ORDERS_CHANNEL)
   ipcMain.removeHandler(LEDGER_EXPORT_CHANNEL)
 
   ipcMain.handle(LEDGER_LIST_CHANNEL, (_event, query: KeyQuery = {}) =>
     sanitizePage(repo.listKeys(query)),
   )
   ipcMain.handle(LEDGER_COUNT_CHANNEL, (_event, query: KeyQuery = {}) => repo.countKeys(query))
+  ipcMain.handle(LEDGER_ORDERS_CHANNEL, (): OrderSummary[] => repo.listOrders())
   ipcMain.handle(
     LEDGER_EXPORT_CHANNEL,
     (_event, format: LedgerExportFormat, query: KeyQuery = {}) =>
