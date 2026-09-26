@@ -66,7 +66,20 @@ APPIMAGE_EXTENSIONS=["MonoSpace store helper","MonoSpace Humble helper"]
 - 会话失效（`unauthorized`）/ 风控 → `needs_human` 且 **`abortBatch: true`**；
 - 未知错误分类 → `needs_human`。
 
-### 1.7 不可逆操作前的闸门（离线，mock 页面） ✅
+### 1.7 同步链路真的接通 ✅
+
+未登录时 Humble 的只读 GET 返回 401（研究 §4.1：GET 不受 Cloudflare 阻挡），所以这条
+**不依赖账号但确定性**地证明了整条链路：
+
+```
+SYNC_BUTTON_VISIBLE=true
+SYNC_RESULT={"ok":false,"reason":"not-logged-in","message":"未登录 Humble（请先在内嵌窗口登录）"}
+```
+
+即：渲染进程按钮 → preload API → IPC → **store 会话 fetch** → `humblebundle.com` → 结构化错误。
+固化为 `tests/e2e/sync-wiring.spec.ts`（`MS_NET_TESTS=1` 手动开，因为需要网络）。
+
+### 1.8 不可逆操作前的闸门（离线，mock 页面） ✅
 
 - 揭示：**只读预检 + 单条试探**；试探发现 `redeemed_key_val` 已存在 → **一次都不写**；
 - 揭示：**恢复=重快照不重放**——首次失败可重试时，重试前重新试探，发现已落地就收工
