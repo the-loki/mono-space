@@ -9,6 +9,7 @@
  * 权限分层沿用 `#13`：只读自动放行；写入自动但留痕；不可逆写入必须人在环路。
  */
 import { type TObject, Type } from 'typebox'
+import type { PageOrderRead } from '../data/page-ingest'
 import type { BrowserHost } from './host-contract'
 import { createBrowserTools } from './tools-browser'
 
@@ -80,6 +81,8 @@ export interface McpHost extends BrowserHost {
   keyContext(keyId: number): Promise<(LedgerRow & { redeemCode?: string | null }) | null>
   ordersSync(): Promise<unknown>
   keysUpsert(entries: KeyUpsertEntry[]): Promise<UpsertResult>
+  /** 把 agent 从订单页**读到**的资产与密钥落库（ADR-0003：key 与资产包只从页面读取）。 */
+  keysIngest(read: PageOrderRead): Promise<unknown>
   /** 打开某条 key 的**订单专属页**（只开页面、不做任何点击），把后续操作交给 agent。 */
   keyOpen(keyId: number): Promise<KeyOpenResult>
   keyRedeem(keyId: number): Promise<ActionOutcome>
@@ -186,6 +189,42 @@ function createDomainTools(host: McpHost): ToolSpec[] {
         }
         return { found: true, key: context }
       },
+    },
+    {
+      name: `${TOOL_PREFIX}keys_ingest`,
+      title: 'MonoSpace 页面读取结果落库',
+      description:
+        '把你在订单页上**读到**的资产与密钥写进 MonoSpace 台账。\n' +
+        'ADR-0003 定了：**key 与资产包只从页面读取**（接口只提供订单列表）。所以这是把页面读到的\n' +
+        '东西落库的**唯一入口**。用法：page_open 打开某单订单页 → monospace_dom 看清页面 →\n' +
+        '逐条读出资产名与「已揭示/未揭示」（已揭示的连密钥一起读）→ 用本工具写回。\n' +
+        '纪律：**只写你真的在页面上看到的**。未揭示的不要给 code；已揭示但没读到码就别编，' +
+        '留空并重新读。写入类，强制留痕。',
+      layer: 'L1',
+      parameters: Type.Object({
+        orderGamekey: Type.String({
+          description: '订单 gamekey（从页面 URL /downloads?key=<gamekey> 取）',
+        }),
+        productName: Type.Optional(Type.String({ description: '页面上看到的订单/包名' })),
+        bundleName: Type.Optional(
+          Type.String({ description: '页面上看到的资产包分组名；看不出分组就省略' }),
+        ),
+        keys: Type.Array(
+          Type.Object({
+            name: Type.String({ description: '资产显示名（页面上那一行的名字）' }),
+            revealed: Type.Boolean({ description: '页面是否已揭示（能看到码为 true）' }),
+            code: Type.Optional(Type.String({ description: '已揭示时从页面读到的密钥明文' })),
+          }),
+          { description: '这一单在页面上看到的所有 key' },
+        ),
+      }),
+      run: (input) =>
+        host.keysIngest({
+          orderGamekey: input.orderGamekey as string,
+          productName: input.productName as string | undefined,
+          bundleName: input.bundleName as string | undefined,
+          keys: input.keys as PageOrderRead['keys'],
+        }),
     },
     {
       name: `${TOOL_PREFIX}orders_sync`,

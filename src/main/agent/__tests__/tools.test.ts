@@ -66,6 +66,7 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
     browserErrors: vi.fn(async () => ({ pageId: 1, url: 'u', errors: [], failedRequests: [] })),
     ordersSync: vi.fn(async () => ({ ok: true })),
     keysUpsert: vi.fn(async () => ({ written: 1, auditId: 'a#1' })),
+    keysIngest: vi.fn(async () => ({ orders: {}, bundles: {}, keys: {} })),
     keyOpen: vi.fn(async (keyId: number) => ({
       ok: true as const,
       keyId,
@@ -329,11 +330,11 @@ describe('工具表完整性', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  it('浏览器接口 6 个（含开场入口 page_open），领域接口 7 个', () => {
+  it('浏览器接口 6 个（含开场入口 page_open），领域接口 8 个', () => {
     const tools = createTools(fakeHost())
     const browser = tools.filter((tool) => tool.description.includes('不是系统 Chrome'))
     expect(browser).toHaveLength(6)
-    expect(tools).toHaveLength(13)
+    expect(tools).toHaveLength(14)
   })
 })
 
@@ -349,5 +350,25 @@ describe('开场入口 page_open（没有页面时 agent 的起点）', () => {
 
   it('工具清单里有它（否则空台账时无从下手）', () => {
     expect(createTools(fakeHost()).map((t) => t.name)).toContain(`${TOOL_PREFIX}page_open`)
+  })
+})
+
+describe('页面读取落库 keys_ingest（ADR-0003 的唯一落库入口）', () => {
+  it('把页面读到的东西原样交给 host，不替 agent 编数据', async () => {
+    const host = fakeHost()
+    const read = {
+      orderGamekey: 'TXzbXSpBc3qfUc3M',
+      productName: 'Best of Leartes',
+      keys: [
+        { name: 'Astronauts (Pack)', revealed: true, code: 'AAAA-BBBB' },
+        { name: 'Creatures (Pack)', revealed: false },
+      ],
+    }
+    await toolNamed(`${TOOL_PREFIX}keys_ingest`, host).run(read)
+    expect(host.keysIngest).toHaveBeenCalledWith(read)
+  })
+
+  it('工具清单里有它（否则页面读到的东西无处落库）', () => {
+    expect(createTools(fakeHost()).map((t) => t.name)).toContain(`${TOOL_PREFIX}keys_ingest`)
   })
 })

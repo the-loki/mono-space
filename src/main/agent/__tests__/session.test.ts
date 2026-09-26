@@ -48,6 +48,7 @@ describe('createEmbeddedAgent', () => {
       expect(names).toContain('monospace_key_open')
       // 开场入口：一个页面都没打开时，agent 必须能自己开一张（否则空台账时无从下手）。
       expect(names).toContain('monospace_page_open')
+      expect(names).toContain('monospace_keys_ingest')
       expect(names).not.toContain('monospace_key_reveal')
 
       // 兑换仍是 L2，仍然不给模型。
@@ -86,6 +87,9 @@ describe('createEmbeddedAgent', () => {
   it('系统提示词自带作用域说明（当前页面 + 不可逆由人按）', () => {
     expect(SYSTEM_PROMPT).toContain('当前打开的那个页面')
     expect(SYSTEM_PROMPT).toContain('不可逆')
+    // ADR-0003：key 与资产包只从页面读取，agent 是执行者。
+    expect(SYSTEM_PROMPT).toContain('只从页面读取')
+    expect(SYSTEM_PROMPT).toContain('monospace_keys_ingest')
   })
 
   it('系统提示词明确要求零英文（实测会漏句子，所以写死这条约束）', () => {

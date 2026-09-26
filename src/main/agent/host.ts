@@ -28,6 +28,7 @@ import { getPage, getSelectedPageId, listPages, navigatePage } from '../browser/
 import { evaluateScript } from '../browser/script'
 import { getStoreSession } from '../browser/store-session'
 import { openStoreView } from '../browser/store-view'
+import { buildPageOrder } from '../data/page-ingest'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
 import { humbleOrderUrl, runRedeem } from '../ipc/tasks'
@@ -255,6 +256,23 @@ export function createMcpHost(): McpHost {
       const client = createDefaultSyncClient()
       const result = await runHumbleSync({ repository, client })
       await appendAudit({ at: new Date().toISOString(), tool: 'orders_sync', detail: result })
+      return result
+    },
+
+    /**
+     * 页面读取结果落库（ADR-0003）。
+     *
+     * 复用现有持久化入口 `applyOrderSync` —— 页面读取不需要另造一套落库逻辑，
+     * 只要把读到的内容构造成 `SyncedOrder` 的形状（构造器是纯函数，见 data/page-ingest.ts）。
+     */
+    async keysIngest(read) {
+      const result = repository.applyOrderSync([buildPageOrder(read)])
+      await appendAudit({
+        at: new Date().toISOString(),
+        tool: 'keys_ingest',
+        keyIds: [],
+        detail: { order: read.orderGamekey, keys: read.keys.length },
+      })
       return result
     },
 
