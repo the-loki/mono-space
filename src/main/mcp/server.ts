@@ -127,7 +127,20 @@ export function isToolContent(value: unknown): value is {
 
 /** 建 McpServer 并注册全部 `monospace_*` 工具。 */
 export function buildMcpServer(host: McpHost): McpServer {
-  const server = new McpServer({ name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION })
+  const server = new McpServer({
+    name: MCP_SERVER_NAME,
+    version: MCP_SERVER_VERSION,
+    title: 'MonoSpace',
+    // 服务级说明（SDK 的字段是 description）：agent 在装载工具前就能看到「这是谁」，
+    // 比逐个看工具描述更早避免撞车。
+    description:
+      '本服务由 **MonoSpace** 提供，服务名 `monospace`，全部工具以 `monospace_` 开头。\n' +
+      '它操作的是 **MonoSpace 应用内置的浏览会话**（页面在应用私有分区，登录态只属于本应用），' +
+      '**不是**系统 Chrome，也**不是** Chrome DevTools MCP / Playwright MCP / Puppeteer 等浏览器 MCP 的页面。\n' +
+      '若同时挂了别的浏览器 MCP：它们的 `click` / `take_snapshot` / `navigate` 与 `monospace_act` /' +
+      ' `monospace_dom` 同名同义但**操作对象完全不同**，请按 `monospace_` 前缀区分。\n' +
+      '`monospace_ledger_*` / `monospace_orders_*` / `monospace_key_*` 等是本应用自己的台账能力，与浏览器无关。',
+  })
 
   for (const tool of createMcpTools(host)) {
     server.registerTool(

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { extractToken, tokenMatches } from '../server'
-import { createMcpTools, type McpHost, TOOL_PREFIX } from '../tools'
+import { createMcpTools, type McpHost, MONOSPACE_TAG, TOOL_PREFIX } from '../tools'
 
 function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
   return {
@@ -306,5 +306,43 @@ describe('工具返回形态', () => {
       filePath: '/tmp/a.png',
     })
     expect(onDisk).toMatchObject({ path: '/tmp/a.png' })
+  })
+})
+
+describe('与真实浏览器 MCP 区分（用户要求强调）', () => {
+  it('每一个工具的描述都以【MonoSpace】开头', () => {
+    for (const spec of createMcpTools(fakeHost())) {
+      expect(spec.description.startsWith(MONOSPACE_TAG), spec.name).toBe(true)
+    }
+  })
+
+  it('浏览器类工具点名了最容易混淆的对手', () => {
+    const dom = createMcpTools(fakeHost()).find((t) => t.name === `${TOOL_PREFIX}dom`)
+    expect(dom?.description).toContain('Chrome DevTools MCP')
+    expect(dom?.description).toContain('Playwright')
+    expect(dom?.description).toContain('不是系统 Chrome')
+  })
+
+  it('作用域声明里的名字与真实浏览器 MCP 不同（避免同名同义误用）', () => {
+    // Chrome DevTools MCP 用的是 click / take_snapshot / navigate_page；
+    // 我们的是 act / dom / act(goto)——同义不同名，前缀也不同。
+    const names = createMcpTools(fakeHost()).map((t) => t.name)
+    expect(names).not.toContain('take_snapshot')
+    expect(names).not.toContain('navigate_page')
+    expect(names).toContain(`${TOOL_PREFIX}dom`)
+  })
+})
+
+describe('工具表完整性', () => {
+  it('工具名唯一（重名会让客户端只认到一个，等于悄悄少功能）', () => {
+    const names = createMcpTools(fakeHost()).map((tool) => tool.name)
+    expect(new Set(names).size).toBe(names.length)
+  })
+
+  it('浏览器接口就 5 个，领域接口 7 个', () => {
+    const tools = createMcpTools(fakeHost())
+    const browser = tools.filter((tool) => tool.description.includes('不是系统 Chrome'))
+    expect(browser).toHaveLength(5)
+    expect(tools).toHaveLength(12)
   })
 })

@@ -98,12 +98,31 @@ export interface McpToolSpec {
 /** 所有工具的统一前缀（防与其它 MCP 撞名）。 */
 export const TOOL_PREFIX = 'monospace_'
 
-/** 浏览器类工具描述里统一加上这句，避免与其它浏览器 MCP 混淆。 */
-export const BROWSER_SCOPE =
-  '作用范围：**MonoSpace 应用内置的浏览会话**（登录态在应用私有分区，不是系统 Chrome，也不是其它浏览器 MCP 的页面）。'
+/**
+ * 所有工具描述的统一前缀。为什么要有它：真实环境里 agent 往往同时挂着
+ * Chrome DevTools MCP / Playwright MCP，它们的 `click` / `take_snapshot` 与我们的
+ * 同名同义但**操作对象完全不同**——一眼可辨比事后解释便宜得多。
+ */
+export const MONOSPACE_TAG = '【MonoSpace】'
 
-/** 建全部工具。 */
+/** 浏览器类工具描述里统一加上这句：说清作用域，并**点名**最容易混淆的那些 MCP。 */
+export const BROWSER_SCOPE =
+  '作用范围：**MonoSpace 应用内置的浏览会话**（页面在应用私有分区，登录态只属于本应用）。' +
+  '**这不是系统 Chrome，也不是 Chrome DevTools MCP / Playwright MCP / Puppeteer 等浏览器 MCP 的页面**——' +
+  '操作对象完全不同，不要把它们的目标与这里的目标混用。'
+
+/** 建全部工具（出口处统一补 `【MonoSpace】` 前缀，保证没有漏网的）。 */
 export function createMcpTools(host: McpHost): McpToolSpec[] {
+  return [...createDomainTools(host), ...createBrowserTools(host)].map((spec) => ({
+    ...spec,
+    description: spec.description.includes(MONOSPACE_TAG)
+      ? spec.description
+      : `${MONOSPACE_TAG} ${spec.description}`,
+  }))
+}
+
+/** 领域工具（MonoSpace 自己的台账 / 同步 / 揭示 / 兑换）。 */
+function createDomainTools(host: McpHost): McpToolSpec[] {
   return [
     {
       name: `${TOOL_PREFIX}ledger_stats`,
@@ -202,6 +221,5 @@ export function createMcpTools(host: McpHost): McpToolSpec[] {
       inputSchema: { keyId: z.number().int().positive() },
       run: (input) => host.keyRedeem(input.keyId as number),
     },
-    ...createBrowserTools(host),
   ]
 }
