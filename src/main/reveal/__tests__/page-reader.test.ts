@@ -8,6 +8,7 @@ import {
   pickRevealCandidate,
   type RevealCandidate,
   readCellState,
+  waitForCandidates,
 } from '../page-reader'
 
 /** 实测过的真实文案：揭示前是「显示您的 … 密钥」。 */
@@ -196,5 +197,56 @@ describe('揭示控件定位：订单页是 div 不是表格（实测）', () =>
         keytype: 'astronautspack_fab',
       }),
     ).toBeUndefined()
+  })
+})
+
+describe('waitForCandidates：等页面渲染（否则揭示永远没机会发生）', () => {
+  const one = [{ x: 1, y: 1, visible: true, controlText: '显示您的 X 密钥', rowText: 'X' }]
+
+  it('先空后有 → 返回候选（不让竞态把揭示判死）', async () => {
+    let calls = 0
+    const got = await waitForCandidates(
+      async () => {
+        calls += 1
+        return calls < 3 ? [] : one
+      },
+      { timeoutMs: 10_000, intervalMs: 1 },
+    )
+    expect(got).toEqual(one)
+    expect(calls).toBe(3)
+  })
+
+  it('一直空 → 超时后返回空数组（等不到就交人工，不无限等）', async () => {
+    let t = 0
+    let calls = 0
+    const got = await waitForCandidates(
+      async () => {
+        calls += 1
+        return []
+      },
+      {
+        timeoutMs: 1000,
+        intervalMs: 10,
+        sleep: async (ms) => {
+          t += ms
+        },
+        now: () => t,
+      },
+    )
+    expect(got).toEqual([])
+    expect(calls).toBeGreaterThan(1)
+  })
+
+  it('第一次就非空 → 不等待', async () => {
+    let calls = 0
+    const got = await waitForCandidates(
+      async () => {
+        calls += 1
+        return one
+      },
+      { timeoutMs: 10_000 },
+    )
+    expect(got).toEqual(one)
+    expect(calls).toBe(1)
   })
 })

@@ -112,6 +112,39 @@ export function decideProbeFallback(input: ProbeFallbackInput): ProbeResult {
   }
 }
 
+export interface WaitForCandidatesOptions {
+  timeoutMs: number
+  /** 轮询间隔。默认 500ms。 */
+  intervalMs?: number
+  /** 便于测试注入 sleep。 */
+  sleep?: (ms: number) => Promise<void>
+  /** 便于测试注入时钟。 */
+  now?: () => number
+}
+
+/**
+ * 等页面把揭示控件渲染出来。
+ *
+ * 为什么必须有它：打开 store 窗口后页面是**异步渲染**的（实测订单页要好几秒才出现
+ * `.keyfield-value`）。立刻探测会拿到 0 个候选，于是流程误判「页面上没有揭示控件」直接
+ * 交人工——**真正的揭示从来没机会发生**（实测：id 48 就是这么失败的）。
+ */
+export async function waitForCandidates(
+  probe: () => Promise<RevealCandidate[]>,
+  options: WaitForCandidatesOptions,
+): Promise<RevealCandidate[]> {
+  const intervalMs = options.intervalMs ?? 500
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const now = options.now ?? (() => Date.now())
+  const deadline = now() + options.timeoutMs
+  for (;;) {
+    const candidates = await probe()
+    if (candidates.length > 0) return candidates
+    if (now() >= deadline) return []
+    await sleep(intervalMs)
+  }
+}
+
 export function isRevealPlaceholder(text: string): boolean {
   return PLACEHOLDER.test(text ?? '')
 }

@@ -32,6 +32,7 @@ import {
   type RevealCandidate,
   type RevealIdentity,
   readCellState,
+  waitForCandidates,
 } from './page-reader'
 
 export interface RevealDriverOptions {
@@ -44,6 +45,12 @@ export interface RevealDriverOptions {
 }
 
 const HUMBLE_HOST = 'humblebundle.com'
+
+/**
+ * 等页面渲染出揭示控件的上限。订单页实测要好几秒；给足余量但仍有限。
+ * 注意：这是**等**，不是无限重试——等不到就交人工（见 `waitForCandidates`）。
+ */
+const CONTENT_WAIT_MS = 20_000
 
 /** 跑一次本 App 写死的探测脚本，收敛成候选格子。 */
 async function probePage(window: BrowserWindow): Promise<RevealCandidate[]> {
@@ -122,7 +129,10 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
       }
 
       // 2. 页面上有没有揭示控件 → 有就说明已登录且密钥表渲染出来了
-      const candidates = await probePage(window)
+      //    必须**等**它渲染：页面是异步的，立刻探测会拿到 0 个候选并误判（实测踩到）。
+      const candidates = await waitForCandidates(() => probePage(window), {
+        timeoutMs: CONTENT_WAIT_MS,
+      })
       if (candidates.length > 0) return { ok: true }
 
       // 3. 兜底：用接口判登录态（未登录会 401/403）
@@ -150,7 +160,9 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
     },
 
     async probe(input: RevealInput): Promise<ProbeResult> {
-      const candidates = await probePage(window)
+      const candidates = await waitForCandidates(() => probePage(window), {
+        timeoutMs: CONTENT_WAIT_MS,
+      })
       const candidate = pickRevealCandidate(candidates, identityOf(input))
 
       if (candidate) {
@@ -171,7 +183,9 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
     },
 
     async submit(input: RevealInput) {
-      const candidates = await probePage(window)
+      const candidates = await waitForCandidates(() => probePage(window), {
+        timeoutMs: CONTENT_WAIT_MS,
+      })
       const candidate = pickRevealCandidate(candidates, identityOf(input))
       if (!candidate) {
         return { kind: 'failed', retryable: false, message: '定位不到揭示控件，已放弃点击' }
