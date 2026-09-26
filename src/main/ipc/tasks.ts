@@ -2,12 +2,12 @@
  * 动作 IPC：把「揭示 / 兑换」两条链路接到渲染进程（`#25` / `#26`）。
  *
  * 契约：
- *   - `tasks:reveal` (keyId) -> RevealTaskResult
- *   - `tasks:redeem` (keyId) -> RedeemTaskResult
+ *   - `tasks:redeem` (keyId) -> TaskIpcResult
+ *   - `tasks:login`  ()      -> LoginWindowResult[]
  *
  * 两者都会**打开可见窗口**（人可随时接管：登录 / 验证码 / 确认条款）。
- * **揭示走浏览器操作**（点页面自己的揭示控件，`#27` 用户决策），只需要打开密钥页；
- * **兑换仍走扩展**（Epic 兑换页需要扩展在页面上下文里执行）。
+ * **揭示不在这里**：特征匹配删除后揭示由内置 agent 走浏览器操作完成
+ * （见 ADR-0003 与 `agent/prompts.ts`），所以本文件只剩兑换与登录。
  */
 import { ipcMain } from 'electron'
 import { ensureBundledExtensions } from '../browser/bundled-extensions'
@@ -99,19 +99,6 @@ async function waitForContentScript(
       if (!(error instanceof ChannelTimeoutError)) return
       await sleep(500)
     }
-  }
-}
-
-/** `keytype#keyindex` → 两部分；退化时用 bundle 的 remoteId + 0。 */
-export function parseKeyRemoteId(
-  keyRemoteId: string,
-  fallbackKeytype: string,
-): { keytype: string; keyindex: number } {
-  const [keytype, index] = keyRemoteId.split('#')
-  const parsed = Number(index)
-  return {
-    keytype: keytype || fallbackKeytype,
-    keyindex: Number.isInteger(parsed) ? parsed : 0,
   }
 }
 
