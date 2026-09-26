@@ -68,3 +68,16 @@ describe('幂等与顺序', () => {
     ).toBe('idle')
   })
 })
+
+describe('脱敏：note 里不放 key 明文', () => {
+  it('已揭示 / 已有 key 的 note 都不含码值', () => {
+    const secret = 'SUPER-SECRET-KEY-123'
+    const revealed = reduceReveal(at('revealing'), { type: 'revealed', code: secret }).state
+    const existing = reduceReveal(at('probing'), {
+      type: 'probeAlreadyRevealed',
+      code: secret,
+    }).state
+    expect(revealed.note).not.toContain(secret)
+    expect(existing.note).not.toContain(secret)
+  })
+})
