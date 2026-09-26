@@ -1,0 +1,40 @@
+{
+  "name": "mono-space",
+  "version": "0.1.0",
+  "description": "游戏资产管家：Humble 揭示 + Fab 兑换",
+  "private": true,
+  "type": "module",
+  "homepage": "https://github.com/the-loki/mono-space",
+  "author": { "name": "the-loki" },
+  "desktopName": "com.theloki.monospace",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "pnpm typecheck && electron-vite build",
+    "build:linux": "pnpm build && electron-builder --linux AppImage",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "pnpm test:e2e",
+    "test:e2e": "electron-vite build && playwright test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@playwright/test": "^1.50.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "44.4.5",
+    "electron-builder": "26.16.1",
+    "electron-vite": "5.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "~7.3.6"
+  }
+}

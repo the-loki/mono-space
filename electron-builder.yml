@@ -1,0 +1,12 @@
+appId: com.theloki.monospace
+productName: MonoSpace
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+linux:
+  target:
+    - AppImage
+  category: Utility
+  syncDesktopName: true

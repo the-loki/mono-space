@@ -1,0 +1,46 @@
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { app, BrowserWindow, ipcMain } from 'electron'
+
+// 主进程是 ESM（package.json "type":"module"），没有 __dirname，需自行推导。
+const currentDir = dirname(fileURLToPath(import.meta.url))
+
+function createWindow(): BrowserWindow {
+  const window = new BrowserWindow({
+    width: 1100,
+    height: 720,
+    show: false,
+    title: 'MonoSpace',
+    webPreferences: {
+      // preload 产物是 .cjs（见 electron.vite.config.ts），在 sandbox 下加载。
+      preload: join(currentDir, '../preload/index.cjs'),
+      sandbox: true,
+    },
+  })
+
+  window.on('ready-to-show', () => window.show())
+
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  if (rendererUrl) {
+    void window.loadURL(rendererUrl)
+  } else {
+    void window.loadFile(join(currentDir, '../renderer/index.html'))
+  }
+
+  return window
+}
+
+app.whenReady().then(() => {
+  // 最小连通性探针：证明 ESM 主进程 ↔ sandboxed preload ↔ 渲染进程的往返成立。
+  ipcMain.handle('ping', (_event, message: string) => `pong:${message}`)
+
+  createWindow()
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
