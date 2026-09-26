@@ -7,11 +7,10 @@
 import { join } from 'node:path'
 import { app } from 'electron'
 
-export type BundledExtension = 'redeem-extension' | 'reveal-extension'
+export type BundledExtension = 'redeem-extension'
 
 const SOURCE_DIRS: Record<BundledExtension, string> = {
   'redeem-extension': 'src/main/redeem/extension',
-  'reveal-extension': 'src/main/reveal/extension',
 }
 
 export function resolveExtensionPath(name: BundledExtension): string {

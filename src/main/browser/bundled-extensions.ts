@@ -1,5 +1,8 @@
 /**
- * 装载内置扩展（兑换 / 揭示）到 store 会话。
+ * 装载内置扩展（**只剩兑换**）到 store 会话。
+ *
+ * 揭示扩展已删除（`#27` 用户决策）：揭示改为**操作页面自己的控件**，
+ * 不需要再有扩展替你在页面里 `fetch`。
  *
  * 约束（`docs/verify/16-embedded-browser.md`）：只能装进 `persist:` 分区，
  * 且每次启动都要重新 `loadExtension`（不能装 `.crx`）。
@@ -16,7 +19,6 @@ let loading: Promise<void> | null = null
 export function ensureBundledExtensions(storeSession: Session): Promise<void> {
   if (!loading) {
     loading = (async () => {
-      await loadStoreExtension(storeSession, resolveExtensionPath('reveal-extension'))
       await loadStoreExtension(storeSession, resolveExtensionPath('redeem-extension'))
     })()
   }

@@ -5,11 +5,13 @@
  *   - `tasks:reveal` (keyId) -> RevealTaskResult
  *   - `tasks:redeem` (keyId) -> RedeemTaskResult
  *
- * 两者都会**打开可见窗口**（人可随时接管：登录 / 验证码 / 确认条款），
- * 然后由内置扩展在页面上下文里执行，主进程只做编排与归类。
+ * 两者都会**打开可见窗口**（人可随时接管：登录 / 验证码 / 确认条款）。
+ * **揭示走浏览器操作**（点页面自己的揭示控件，`#27` 用户决策），只需要打开密钥页；
+ * **兑换仍走扩展**（Epic 兑换页需要扩展在页面上下文里执行）。
  */
 import { ipcMain } from 'electron'
 import { ensureBundledExtensions } from '../browser/bundled-extensions'
+import { getPage } from '../browser/pages'
 import { getStoreSession } from '../browser/store-session'
 import { openStoreView } from '../browser/store-view'
 import { ChannelTimeoutError, createWindowCommandChannel } from '../redeem/channel'
@@ -18,6 +20,7 @@ import { createRedeemPorts } from '../redeem/page-driver'
 import { revealOne } from '../reveal/flow'
 import { createRevealPorts } from '../reveal/page-driver'
 import { ledgerRepository } from './ledger'
+import { createDefaultSyncClient } from './sync'
 
 export const TASK_REVEAL_CHANNEL = 'tasks:reveal'
 export const TASK_REDEEM_CHANNEL = 'tasks:redeem'
@@ -121,13 +124,18 @@ export async function runReveal(keyId: number): Promise<TaskIpcResult> {
   const input = { keyId, gamekey: detail.orderRemoteId, keytype, keyindex }
 
   const storeSession = getStoreSession()
-  await ensureBundledExtensions(storeSession)
+  // 揭示是「操作页面」：不需要装扩展，打开密钥页就行——页面上的揭示控件本身就是入口。
   const view = await openStoreView(storeSession, HUMBLE_KEYS_URL, { show: true, exclusive: true })
 
-  const channel = createWindowCommandChannel(view.id)
-  await waitForContentScript(channel, 'reveal-precheck', input)
-
-  return revealOne(input, createRevealPorts({ channel, repository }))
+  return revealOne(
+    input,
+    createRevealPorts({
+      window: getPage(view.id),
+      repository,
+      // 接口兜底：页面读不到码时用只读 GET 的 redeemed_key_val 补偿。
+      client: createDefaultSyncClient(storeSession),
+    }),
+  )
 }
 
 export async function runRedeem(keyId: number): Promise<TaskIpcResult> {

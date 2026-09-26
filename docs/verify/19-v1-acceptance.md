@@ -25,7 +25,7 @@ Electron `44.4.5`（Chrome `152.0.7977.130` / Node `24.21.0`）、显示 `:198`�
 
 ```
 APPIMAGE_TITLE="MonoSpace"
-APPIMAGE_EXTENSIONS=["MonoSpace store helper","MonoSpace Humble helper"]
+APPIMAGE_EXTENSIONS=["MonoSpace store helper"]
 ```
 
 即：AppImage 能拉起、主窗口标题正确，且打包进去的两个 MV3 扩展都能被**加载**。
@@ -109,7 +109,7 @@ SYNC_RESULT={"ok":false,"reason":"not-logged-in","message":"未登录 Humble（�
 | 登录态下 `/i/users/me` 返回 **200**、一次真实 claim **全程无 challenge** | `#16` | `docs/verify/16-embedded-browser.md` |
 | Epic **2FA 的实际方法**与「约 30 天重索」的实测 | `#18` | `docs/verify/18-epic-redemption-errors.md` |
 | Humble 订单列表**是否真的无服务端分页**、真实库耗时/内存 | `#22` | `docs/research/humble-reveal.md` |
-| 订单详情 JSON 结构、`keyindex` 字段名、登录态判据、CSRF 头、`*_keyless` 判定 | `#25` | `src/main/reveal/extension/README.md` |
+| 揭示控件定位（已实测，见下节）| `#25` | `src/main/reveal/page-reader.ts` |
 | Epic 兑换页 DOM 选择器校准 | `#26` | `src/main/redeem/extension/README.md` |
 
 ### 2.3 端到端
@@ -140,3 +140,33 @@ MS_NET_TESTS=1 DISPLAY=:198 pnpm exec playwright test browser-skeleton -g 手动
 
 > **注**：`#27` 的 DoD 要求「发现的问题各自开新 issue」。本轮验收已发现并关闭 1 个缺口：
 > `#28`（同步模块没有入口、台账无数据来源）。
+
+## 实测校准：密钥页真实 DOM（2026-09-26，已登录真实账号）
+
+用 MonoSpace 自带的浏览器能力（`evaluate_script` 只读探测 + a11y 快照）在真实
+`https://www.humblebundle.com/home/keys` 上核对出的结构：
+
+| 项 | 实测结果 |
+| --- | --- |
+| 密钥表 | `table > tr`，表头为 `th.platform` / `th.game-name` / `th.redeemer-cell`；**首页 21 行** |
+| **揭示控件** | **`div.keyfield-value`**，文本形如「显示您的 Leartes Studios 密钥」「显示您的 Fab 密钥」；**首页 20 个** |
+| 它不是按钮 | 该元素**没有** `button` / `[role=button]`，靠 JS 事件处理器响应点击——**按 `button` 选择器找会 0 命中**，这是之前揭示驱动选不中的根因 |
+| a11y 视角 | 在无障碍树里它被合并进单元格的可访问名字里（`cell "显示您的 … 密钥 Redemption Instructions 兑换截止时间是 …"`），**单独一行的 `button` 节点并不存在** |
+
+**因此揭示驱动应当**：定位 `tr` 里 `div.keyfield-value`（文本以「显示您的」开头）
+→ 取其矩形中心点击（真实 CDP 输入事件），**不要**依赖 `button` 选择器。
+
+> 仍未实测（用户要求先不点真 key）：**点击后码出现在页面哪个元素里**、分页推进方式（首页标注 48 页）。
+> 因此 `extractKeyCode` 采用宽松匹配 + **接口兜底**（读不到就用只读 GET 的 `redeemed_key_val`）；
+> 定位不到控件时**交人工，绝不猜着点**（不可逆操作宁可失败）。
+
+### 揭示机制（`#27` 用户决策：默认走浏览器，接口兜底）
+
+| | 旧（已删） | 现 |
+|---|---|---|
+| 触发揭示 | 扩展在同源上下文 `POST /humbler/redeemkey` | **CDP 真实输入事件点页面自己的揭示控件** `div.keyfield-value` |
+| 读码 | 解析 POST 响应；silent-no-key 时重 GET 订单 | **优先从页面读**；读不到 → **接口兜底**（只读 GET 的 `redeemed_key_val`） |
+| 扩展 | 必需（绕 TLS 指纹） | **不再需要**，揭示扩展已删除（`MonoSpace Humble helper` 随之消失） |
+| 只读前置校验 | API 判 `redeemed_key_val` | 页面优先（控件文案），API 兜底 |
+| 定位失败 | — | **交人工**，不猜着点 |
+

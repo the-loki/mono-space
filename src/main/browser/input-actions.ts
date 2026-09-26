@@ -460,3 +460,18 @@ export async function scrollPage(
     deltaY: direction === 'down' ? amount : -amount,
   })
 }
+
+/** 在坐标点击（真实输入事件；揭示驱动用它点页面自己的控件）。 */
+export async function clickAt(
+  window: BrowserWindow,
+  x: number,
+  y: number,
+  options: { dblClick?: boolean } = {},
+): Promise<void> {
+  const count = options.dblClick ? 2 : 1
+  await mouse(window, 'mouseMoved', x, y, { buttons: 0 })
+  for (let index = 1; index <= count; index += 1) {
+    await mouse(window, 'mousePressed', x, y, { clickCount: index })
+    await mouse(window, 'mouseReleased', x, y, { clickCount: index })
+  }
+}
