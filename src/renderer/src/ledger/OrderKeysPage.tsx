@@ -153,7 +153,7 @@ export function OrderKeysPage({
 
         {isEmpty && (
           <p data-testid="ledger-empty" className="p-4 text-slate-400 text-sm">
-            这单还没读到 key。回到订单列表点「读取本单 key」。
+            这单还没读到 key。回到订单列表点「读取并揭示本单 key」。
           </p>
         )}
 

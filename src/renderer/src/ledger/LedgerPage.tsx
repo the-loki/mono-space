@@ -47,7 +47,7 @@ export function LedgerPage(): JSX.Element {
       const result = await window.api.sync.run()
       setActionNote(
         result.ok
-          ? `同步完成：订单 ${result.report.orderCount}（key 需逐单「读取本单 key」从页面读取）`
+          ? `同步完成：订单 ${result.report.orderCount}（key 需逐单「读取并揭示本单 key」从页面读取）`
           : `同步失败：${result.message}`,
       )
     } catch (cause: unknown) {

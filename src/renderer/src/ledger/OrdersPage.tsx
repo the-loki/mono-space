@@ -1,6 +1,6 @@
 /**
  * 订单主视图（ADR-0003）：一单一行，显示商品名 / 购买时间 / key 计数，并提供
- * 「读取本单 key」（触发内置任务）与进入明细的入口。
+ * 「读取并揭示本单 key」（触发内置任务）与进入明细的入口。
  *
  * 纯展示组件：数据由 `LedgerPage` 持有（这样同步 / 读取完成后能统一刷新）。
  * 同步只提供 gamekey，所以读过页面之前商品名显示「未读取」、购买时间不显示。
@@ -11,7 +11,7 @@ import type { OrdersData } from './useOrdersData'
 
 interface OrdersPageProps {
   data: OrdersData
-  /** 正在「读取本单 key」的订单 gamekey（按钮禁用用）。 */
+  /** 正在「读取并揭示本单 key」的订单 gamekey（按钮禁用用）。 */
   readBusyGamekey: string | null
   /** 进入某一单的明细（key 列表）。 */
   onOpenOrder: (order: OrderSummary) => void
@@ -63,7 +63,7 @@ export function OrdersPage({
 
         {data.status === 'ready' && data.orders.length === 0 && (
           <p data-testid="orders-empty" className="p-4 text-slate-400 text-sm">
-            还没有订单。先点「同步」从 Humble 拉订单列表，再逐单「读取本单 key」。
+            还没有订单。先点「同步」从 Humble 拉订单列表，再逐单「读取并揭示本单 key」。
           </p>
         )}
 
@@ -97,7 +97,7 @@ export function OrdersPage({
                 }}
                 className="rounded bg-indigo-800 px-2 py-1 text-indigo-50 text-xs hover:bg-indigo-700 disabled:opacity-50"
               >
-                {readBusyGamekey === order.orderRemoteId ? '读取中…' : '读取本单 key'}
+                {readBusyGamekey === order.orderRemoteId ? '读取中…' : '读取并揭示本单 key'}
               </button>
               <button
                 type="button"
