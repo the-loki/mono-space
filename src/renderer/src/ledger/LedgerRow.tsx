@@ -8,8 +8,21 @@ import { ENGINE_LABELS, redeemStatusLabel, revealStatusLabel } from './labels'
 import type { LedgerListItem } from './types'
 import { LEDGER_ROW_HEIGHT } from './window'
 
+/** 行内动作：揭示（未揭示时）或兑换（已揭示未兑换时）。 */
+export type LedgerAction = 'reveal' | 'redeem'
+
 interface LedgerRowProps {
   item: LedgerListItem
+  /** 该行正在进行动作（禁用按钮）。 */
+  busy?: boolean
+  onAction?: (action: LedgerAction, item: LedgerListItem) => void
+}
+
+/** 该行当前能做什么（无则为 null）。 */
+export function actionFor(item: LedgerListItem): LedgerAction | null {
+  if (item.revealStatus !== 'revealed') return 'reveal'
+  if (item.redeemStatus !== 'redeemed') return 'redeem'
+  return null
 }
 
 /** 状态胶囊。 */
@@ -41,14 +54,15 @@ function redeemTone(status: LedgerListItem['redeemStatus']): string {
 }
 
 /** 一行台账记录。 */
-export function LedgerRow({ item }: LedgerRowProps): JSX.Element {
+export function LedgerRow({ item, busy = false, onAction }: LedgerRowProps): JSX.Element {
+  const action = actionFor(item)
   return (
     <div
       data-testid="ledger-row"
       data-key-id={item.id}
       data-reveal-status={item.revealStatus}
       data-redeem-status={item.redeemStatus}
-      className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6rem] items-center gap-3 border-slate-800 border-b px-3 text-sm"
+      className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6rem_5rem] items-center gap-3 border-slate-800 border-b px-3 text-sm"
       style={{ height: LEDGER_ROW_HEIGHT }}
     >
       <span className="truncate" title={item.name ?? item.keyRemoteId}>
@@ -68,6 +82,20 @@ export function LedgerRow({ item }: LedgerRowProps): JSX.Element {
           {redeemStatusLabel(item.redeemStatus)}
         </StatusPill>
       </span>
+      <span>
+        {action && (
+          <button
+            type="button"
+            data-testid="ledger-action"
+            data-action={action}
+            disabled={busy}
+            onClick={() => onAction?.(action, item)}
+            className="rounded bg-sky-800 px-2 py-1 text-sky-100 text-xs hover:bg-sky-700 disabled:opacity-50"
+          >
+            {busy ? '进行中…' : action === 'reveal' ? '揭示' : '兑换'}
+          </button>
+        )}
+      </span>
     </div>
   )
 }
@@ -78,7 +106,7 @@ export function LedgerSkeletonRow({ index }: { index: number }): JSX.Element {
     <div
       data-testid="ledger-row-skeleton"
       data-row-index={index}
-      className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6rem] items-center gap-3 border-slate-800 border-b px-3"
+      className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6rem_5rem] items-center gap-3 border-slate-800 border-b px-3"
       style={{ height: LEDGER_ROW_HEIGHT }}
     >
       <span className="h-3 w-40 animate-pulse rounded bg-slate-700" />

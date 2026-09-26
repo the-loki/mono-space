@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { KeyPage, KeyQuery } from '../main/data/types'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
+import type { TaskIpcResult } from '../main/ipc/tasks'
 
 const api = {
   ping: (message: string): Promise<string> => ipcRenderer.invoke('ping', message),
@@ -10,6 +11,11 @@ const api = {
     count: (query: KeyQuery = {}): Promise<number> => ipcRenderer.invoke('ledger:count', query),
     export: (format: LedgerExportFormat, query: KeyQuery = {}): Promise<string> =>
       ipcRenderer.invoke('ledger:export', format, query),
+  },
+  /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
+  tasks: {
+    reveal: (keyId: number): Promise<TaskIpcResult> => ipcRenderer.invoke('tasks:reveal', keyId),
+    redeem: (keyId: number): Promise<TaskIpcResult> => ipcRenderer.invoke('tasks:redeem', keyId),
   },
 }
 

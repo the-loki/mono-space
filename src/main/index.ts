@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { initBrowser } from './browser'
 import { registerLedgerIpc } from './ipc/ledger'
+import { registerTaskIpc } from './ipc/tasks'
 
 // 主进程是 ESM（package.json "type":"module"），没有 __dirname，需自行推导。
 const currentDir = dirname(fileURLToPath(import.meta.url))
@@ -41,6 +42,9 @@ app.whenReady().then(() => {
 
   // 台账列表 / 计数 / 导出（见 #23；列表不含兑换码明文）。
   registerLedgerIpc()
+
+  // 单条揭示 / 兑换动作（见 #25 / #26）。
+  registerTaskIpc()
 
   createWindow()
 

@@ -26,6 +26,8 @@ export interface LedgerData {
   ensurePages: (wanted: readonly number[]) => void
   /** 按全局行下标取行；该页未加载时返回 undefined（渲染骨架行）。 */
   rowAt: (index: number) => LedgerListItem | undefined
+  /** 强制重取（丢弃缓存并重新拉总数）。 */
+  reload: () => void
 }
 
 function describe(cause: unknown): string {
@@ -41,12 +43,16 @@ export function useLedgerData(
   const [status, setStatus] = useState<LedgerLoadStatus>('loading')
   const [error, setError] = useState<string | null>(null)
   const [pages, setPages] = useState<ReadonlyMap<number, LedgerListItem[]>>(() => new Map())
+  // 递增即强制重取（动作完成后刷新台账）。
+  const [reloadToken, setReloadToken] = useState(0)
 
   // 换代计数：筛选切换后，旧筛选的在途响应一律丢弃。
   const generation = useRef(0)
   // 本代已发出请求的页号；重复调用不重发，失败也不自动重试（避免错误态下重发风暴）。
   const requestedPages = useRef(new Set<number>())
 
+  // reloadToken 是故意只作触发器的依赖（递增即重取），effect 体里不需要读它。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 见上
   useEffect(() => {
     const current = (generation.current += 1)
     requestedPages.current.clear()
@@ -66,7 +72,7 @@ export function useLedgerData(
         setError(describe(cause))
         setStatus('error')
       })
-  }, [filter])
+  }, [filter, reloadToken])
 
   const ensurePages = useCallback(
     (wanted: readonly number[]) => {
@@ -103,5 +109,7 @@ export function useLedgerData(
     [pages, pageSize],
   )
 
-  return { total, status, error, pages, ensurePages, rowAt }
+  const reload = useCallback(() => setReloadToken((value) => value + 1), [])
+
+  return { total, status, error, pages, ensurePages, rowAt, reload }
 }

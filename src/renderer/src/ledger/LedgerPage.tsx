@@ -6,9 +6,9 @@
  * 未引入任何依赖。
  */
 import { type JSX, type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LedgerRow, LedgerSkeletonRow } from './LedgerRow'
+import { type LedgerAction, LedgerRow, LedgerSkeletonRow } from './LedgerRow'
 import { LEDGER_FILTER_LABELS, LEDGER_FILTERS } from './query'
-import type { LedgerExportFormat, LedgerFilter } from './types'
+import type { LedgerExportFormat, LedgerFilter, LedgerListItem } from './types'
 import { useLedgerData } from './useLedgerData'
 import { computeWindow, pagesForWindow, windowRowIndexes } from './window'
 
@@ -21,9 +21,12 @@ export function LedgerPage(): JSX.Element {
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(FALLBACK_VIEWPORT_HEIGHT)
   const [exportNote, setExportNote] = useState('')
+  const [actionNote, setActionNote] = useState('')
+  const [busyKeyId, setBusyKeyId] = useState<number | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
 
   const data = useLedgerData(filter)
+  const { reload } = data
   const { ensurePages } = data
 
   const view = useMemo(
@@ -65,6 +68,33 @@ export function LedgerPage(): JSX.Element {
       }
     },
     [filter],
+  )
+
+  // 揭示 / 兑换：会打开可见窗口供人接管（登录 / 验证码）；返回后刷新台账。
+  const handleAction = useCallback(
+    async (action: LedgerAction, item: LedgerListItem) => {
+      setBusyKeyId(item.id)
+      setActionNote(
+        action === 'reveal' ? '揭示中…（若弹出窗口请完成登录）' : '兑换中…（若弹出窗口请完成登录）',
+      )
+      try {
+        const result =
+          action === 'reveal'
+            ? await window.api.tasks.reveal(item.id)
+            : await window.api.tasks.redeem(item.id)
+        setActionNote(
+          `${action === 'reveal' ? '揭示' : '兑换'}结束：${result.status}${
+            result.pause ? `（暂停：${result.pause}）` : ''
+          }｜${result.note}`,
+        )
+      } catch (cause: unknown) {
+        setActionNote(cause instanceof Error ? cause.message : String(cause))
+      } finally {
+        setBusyKeyId(null)
+        reload()
+      }
+    },
+    [reload],
   )
 
   const isEmpty = data.status === 'ready' && data.total === 0
@@ -122,13 +152,20 @@ export function LedgerPage(): JSX.Element {
         </div>
       </header>
 
-      <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6rem] gap-3 border-slate-700 border-b px-3 pb-1 text-slate-500 text-xs">
+      <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6rem_5rem] gap-3 border-slate-700 border-b px-3 pb-1 text-slate-500 text-xs">
         <span>资产</span>
         <span>包</span>
         <span>引擎</span>
         <span>揭示状态</span>
         <span>兑换状态</span>
+        <span>动作</span>
       </div>
+
+      {actionNote && (
+        <p data-testid="ledger-action-note" className="px-3 text-slate-400 text-xs">
+          {actionNote}
+        </p>
+      )}
 
       <div
         ref={viewportRef}
@@ -171,7 +208,12 @@ export function LedgerPage(): JSX.Element {
               {rows.map((index) => {
                 const item = data.rowAt(index)
                 return item ? (
-                  <LedgerRow key={item.id} item={item} />
+                  <LedgerRow
+                    key={item.id}
+                    item={item}
+                    busy={busyKeyId === item.id}
+                    onAction={(action, target) => void handleAction(action, target)}
+                  />
                 ) : (
                   <LedgerSkeletonRow key={`skeleton-${index}`} index={index} />
                 )

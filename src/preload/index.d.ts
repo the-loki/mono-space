@@ -57,6 +57,14 @@ export interface MonoSpaceLedgerKeyPage {
   offset: number
 }
 
+export interface MonoSpaceTaskResult {
+  status: string
+  pause?: string
+  code?: string
+  attempts: number
+  note: string
+}
+
 export interface MonoSpaceApi {
   ping(message: string): Promise<string>
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
@@ -64,6 +72,11 @@ export interface MonoSpaceApi {
     list(query?: MonoSpaceLedgerKeyQuery): Promise<MonoSpaceLedgerKeyPage>
     count(query?: MonoSpaceLedgerKeyQuery): Promise<number>
     export(format: 'json' | 'csv', query?: MonoSpaceLedgerKeyQuery): Promise<string>
+  }
+  /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
+  tasks: {
+    reveal(keyId: number): Promise<MonoSpaceTaskResult>
+    redeem(keyId: number): Promise<MonoSpaceTaskResult>
   }
 }
 
