@@ -36,15 +36,14 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
           }
         : null,
     ),
-    // —— 浏览器镜像（Chrome MCP 对齐）——
-    browserListPages: vi.fn(async () => [{ pageId: 1, url: 'u', title: 't', selected: true }]),
-    browserSelectPage: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', selected: true })),
-    browserNewPage: vi.fn(async () => ({ pageId: 2, url: 'u2', title: 't2', selected: true })),
-    browserClosePage: vi.fn(async () => ({ closed: 2, pages: [] })),
+    // —— 浏览器（融合缩减后的 5 个工具背后）——
+    browserCurrentPage: vi.fn(async () => ({
+      pageId: 1,
+      url: 'u',
+      title: 't',
+      selected: true,
+    })),
     browserNavigatePage: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', selected: true })),
-    browserWaitFor: vi.fn(async () => ({ matched: 'x' })),
-    browserEmulate: vi.fn(async () => ({ pageId: 1, applied: [] })),
-    browserResizePage: vi.fn(async () => ({ pageId: 1, width: 800, height: 600 })),
     browserTakeSnapshot: vi.fn(async () => ({
       pageId: 1,
       url: 'u',
@@ -55,23 +54,16 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
     })),
     browserTakeScreenshot: vi.fn(async () => ({ pageId: 1, format: 'png', bytes: 3 })),
     browserClick: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
-    browserClickAt: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserHover: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserDrag: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserFill: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
-    browserFillForm: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserTypeText: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserPressKey: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserUploadFile: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserHandleDialog: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
+    browserScroll: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', detail: 'ok' })),
     browserEvaluateScript: vi.fn(async () => ({ value: 1 })),
-    browserListConsoleMessages: vi.fn(async () => ({ messages: [], total: 0 })),
-    browserGetConsoleMessage: vi.fn(async () => ({ msgid: 1, type: 'log', text: 'x' })),
-    browserListNetworkRequests: vi.fn(async () => ({ requests: [], total: 0 })),
-    browserGetNetworkRequest: vi.fn(async () => ({ reqid: 1, url: 'u', method: 'GET' })),
-    browserGetCssStyles: vi.fn(async () => ({ rules: [], total: 0, pageIdx: 0 })),
-    browserPerformanceStartTrace: vi.fn(async () => ({ pageId: 1 })),
-    browserPerformanceStopTrace: vi.fn(async () => ({ pageId: 1, path: '/tmp/t.json' })),
+    browserErrors: vi.fn(async () => ({ pageId: 1, url: 'u', errors: [], failedRequests: [] })),
     ordersSync: vi.fn(async () => ({ ok: true })),
     keysUpsert: vi.fn(async () => ({ written: 1, auditId: 'a#1' })),
     keyReveal: vi.fn(async () => ({ status: 'revealed', attempts: 1, note: 'ok' })),
@@ -97,16 +89,16 @@ describe('命名：全部 monospace_ 前缀（防与其它浏览器 MCP 撞名�
     const tools = createMcpTools(fakeHost())
     // 与内置浏览器语义相关的工具（key_page_read 也会驱动内置浏览器，但不带 browser 段）。
     const browserSemantic = [
-      `${TOOL_PREFIX}click`,
-      `${TOOL_PREFIX}take_snapshot`,
-      `${TOOL_PREFIX}navigate_page`,
-      `${TOOL_PREFIX}evaluate_script`,
-      `${TOOL_PREFIX}take_screenshot`,
+      `${TOOL_PREFIX}dom`,
+      `${TOOL_PREFIX}screenshot`,
+      `${TOOL_PREFIX}script`,
+      `${TOOL_PREFIX}act`,
+      `${TOOL_PREFIX}errors`,
     ]
-    // 浏览器类工具是 Chrome MCP 的镜像，数量明显多于领域工具。
+    // 融合缩减：浏览器接口就这 5 个（其余能力收进 act）。
     expect(
       tools.filter((tool) => tool.description.includes('MonoSpace 应用内置的浏览会话')).length,
-    ).toBeGreaterThan(20)
+    ).toBe(5)
     for (const name of browserSemantic) {
       const tool = tools.find((candidate) => candidate.name === name)
       expect(tool, name).toBeDefined()
@@ -128,11 +120,11 @@ describe('权限分层（#13）', () => {
     const tools = createMcpTools(fakeHost())
     const layerOf = (name: string) => tools.find((t) => t.name === name)?.layer
     expect(layerOf(`${TOOL_PREFIX}ledger_stats`)).toBe('L0')
-    expect(layerOf(`${TOOL_PREFIX}take_snapshot`)).toBe('L0')
-    expect(layerOf(`${TOOL_PREFIX}list_console_messages`)).toBe('L0')
+    expect(layerOf(`${TOOL_PREFIX}dom`)).toBe('L0')
+    expect(layerOf(`${TOOL_PREFIX}errors`)).toBe('L0')
     expect(layerOf(`${TOOL_PREFIX}orders_sync`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}keys_upsert`)).toBe('L1')
-    expect(layerOf(`${TOOL_PREFIX}click`)).toBe('L1')
+    expect(layerOf(`${TOOL_PREFIX}act`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}key_reveal`)).toBe('L2')
     expect(layerOf(`${TOOL_PREFIX}key_redeem`)).toBe('L2')
   })
@@ -171,57 +163,60 @@ describe('工具行为', () => {
     expect(result.found).toBe(false)
   })
 
-  it('click 转发 pageId 与 uid（用最近快照的引用）', async () => {
+  it('act(click) 作用于当前页面并转发 uid', async () => {
     const host = fakeHost()
-    await toolNamed(`${TOOL_PREFIX}click`, host).run({ pageId: 3, uid: '1_5', dblClick: true })
-    expect(host.browserClick).toHaveBeenCalledWith(3, '1_5', {
-      dblClick: true,
-      includeSnapshot: undefined,
-    })
+    await toolNamed(`${TOOL_PREFIX}act`, host).run({ action: 'click', uid: '1_5' })
+    expect(host.browserCurrentPage).toHaveBeenCalled()
+    expect(host.browserClick).toHaveBeenCalledWith(1, '1_5', { includeSnapshot: undefined })
   })
 
-  it('take_snapshot 转发 pageId 与 verbose', async () => {
+  it('act(click) 缺 uid 时给一句能照着做的错', async () => {
     const host = fakeHost()
-    const result = await toolNamed(`${TOOL_PREFIX}take_snapshot`, host).run({
-      pageId: 4,
-      verbose: true,
-    })
-    expect(host.browserTakeSnapshot).toHaveBeenCalledWith(4, {
+    await expect(toolNamed(`${TOOL_PREFIX}act`, host).run({ action: 'click' })).rejects.toThrow(
+      /click 需要 uid/,
+    )
+  })
+
+  it('dom 作用于当前页面并转发 verbose', async () => {
+    const host = fakeHost()
+    const result = await toolNamed(`${TOOL_PREFIX}dom`, host).run({ verbose: true })
+    expect(host.browserTakeSnapshot).toHaveBeenCalledWith(1, {
       filePath: undefined,
       verbose: true,
     })
     expect(result).toMatchObject({ nodeCount: 1 })
   })
 
-  it('evaluate_script 转发函数与参数', async () => {
+  it('script 转发函数与参数', async () => {
     const host = fakeHost()
-    await toolNamed(`${TOOL_PREFIX}evaluate_script`, host).run({
-      pageId: 2,
+    await toolNamed(`${TOOL_PREFIX}script`, host).run({
       function: '() => document.title',
       args: [1, 'a'],
     })
-    expect(host.browserEvaluateScript).toHaveBeenCalledWith(2, '() => document.title', {
+    expect(host.browserEvaluateScript).toHaveBeenCalledWith(1, '() => document.title', {
       args: [1, 'a'],
-      dialogAction: undefined,
       filePath: undefined,
       waitForStableDom: undefined,
     })
   })
 
-  it('navigate_page 转发导航参数', async () => {
+  it('act(goto) 转发 url', async () => {
     const host = fakeHost()
-    await toolNamed(`${TOOL_PREFIX}navigate_page`, host).run({
-      pageId: 1,
-      type: 'url',
-      url: 'https://example.com',
-    })
+    await toolNamed(`${TOOL_PREFIX}act`, host).run({ action: 'goto', url: 'https://example.com' })
     expect(host.browserNavigatePage).toHaveBeenCalledWith(1, {
       type: 'url',
       url: 'https://example.com',
-      timeout: undefined,
-      ignoreCache: undefined,
-      handleBeforeUnload: undefined,
     })
+  })
+
+  it('act(scroll) 转发方向与像素量', async () => {
+    const host = fakeHost()
+    await toolNamed(`${TOOL_PREFIX}act`, host).run({
+      action: 'scroll',
+      direction: 'up',
+      amount: 300,
+    })
+    expect(host.browserScroll).toHaveBeenCalledWith(1, 'up', 300)
   })
 
   it('keys_upsert 转发条目', async () => {
@@ -272,5 +267,44 @@ describe('脱敏：页面标题里的账号邮箱不能扩散', () => {
     expect(redactSnapshotText('- RootWebArea "Humble Bundle - 574706224@qq.com"')).toBe(
       '- RootWebArea "Humble Bundle - <账号已脱敏>"',
     )
+  })
+})
+
+describe('工具返回形态', () => {
+  it('截图类工具自己给 content 块时不被 JSON 包裹（否则图片会变成文本）', async () => {
+    const { isToolContent } = await import('../server')
+    expect(isToolContent({ content: [{ type: 'image', data: 'x', mimeType: 'image/png' }] })).toBe(
+      true,
+    )
+    expect(isToolContent({ nodeCount: 1 })).toBe(false)
+    expect(isToolContent(null)).toBe(false)
+  })
+
+  it('screenshot 内联时回图片块，落盘时回路径', async () => {
+    const host = fakeHost({
+      browserTakeScreenshot: vi.fn(async () => ({
+        pageId: 1,
+        format: 'png',
+        bytes: 3,
+        data: 'AAAA',
+      })),
+    })
+    const inline = (await toolNamed(`${TOOL_PREFIX}screenshot`, host).run({})) as {
+      content: Array<{ type: string }>
+    }
+    expect(inline.content[0]?.type).toBe('image')
+
+    const saved = fakeHost({
+      browserTakeScreenshot: vi.fn(async () => ({
+        pageId: 1,
+        format: 'png',
+        bytes: 3,
+        path: '/tmp/a.png',
+      })),
+    })
+    const onDisk = await toolNamed(`${TOOL_PREFIX}screenshot`, saved).run({
+      filePath: '/tmp/a.png',
+    })
+    expect(onDisk).toMatchObject({ path: '/tmp/a.png' })
   })
 })

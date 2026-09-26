@@ -117,6 +117,14 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.end(payload)
 }
 
+/** 工具是否自己给了 content 块（例如截图回图片）。 */
+export function isToolContent(value: unknown): value is {
+  content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>
+} {
+  if (typeof value !== 'object' || value === null) return false
+  return Array.isArray((value as { content?: unknown }).content)
+}
+
 /** 建 McpServer 并注册全部 `monospace_*` 工具。 */
 export function buildMcpServer(host: McpHost): McpServer {
   const server = new McpServer({ name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION })
@@ -128,6 +136,8 @@ export function buildMcpServer(host: McpHost): McpServer {
       async (input: Record<string, unknown>) => {
         try {
           const result = await tool.run(input ?? {})
+          // 截图这类工具直接给 content 块（图片），不能再被 JSON 包成文本。
+          if (isToolContent(result)) return result
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
           }

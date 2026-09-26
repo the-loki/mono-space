@@ -13,13 +13,13 @@ import { app, type BrowserWindow } from 'electron'
 import { snapshotPageAx } from '../browser/ax-snapshot'
 import type { AxRef } from '../browser/ax-tree'
 import {
-  clickAt,
   clickElement,
   dragElement,
   fillElement,
   handleDialog,
   hoverElement,
   pressKeyCombo,
+  scrollPage,
   typeText,
   uploadFile,
 } from '../browser/input-actions'
@@ -31,19 +31,7 @@ import {
   getConsoleMessage as readConsoleMessage,
   takeScreenshot,
 } from '../browser/introspection'
-import {
-  closePage,
-  emulate,
-  getPage,
-  getSelectedPageId,
-  listPages,
-  navigatePage,
-  newPage,
-  resizePage,
-  selectPage,
-  waitForText,
-} from '../browser/pages'
-import { startTrace, stopTrace } from '../browser/performance'
+import { getPage, getSelectedPageId, listPages, navigatePage } from '../browser/pages'
 import { evaluateScript } from '../browser/script'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
@@ -313,45 +301,67 @@ export function createMcpHost(): McpHost {
       return outcome
     },
 
+    // —————————————————————— 当前页面（不再有 pageId） ——————————————————————
+    async browserCurrentPage() {
+      // 页面由 App 的界面打开；agent 只操作「当前那一个」。
+      // 优先用显式选中的，其次用唯一/最近的那一个——都不满足就如实报错。
+      const pages = listPages()
+      if (pages.length === 0) {
+        throw new Error(
+          '当前没有打开任何 MonoSpace 页面；请先在 App 界面里打开（登录 / 同步等入口）。',
+        )
+      }
+      const selectedId = getSelectedPageId()
+      const selected = pages.find((page) => page.pageId === selectedId)
+      if (selected) return selected
+      if (pages.length === 1) return pages[0] as (typeof pages)[number]
+      throw new Error(
+        `打开了 ${pages.length} 个页面（${pages.map((page) => page.pageId).join(', ')}），请先在 App 界面里选定要操作的那一个。`,
+      )
+    },
+
+    // —————————————————————— 操作（act） ——————————————————————
+    async browserScroll(pageId, direction, amount) {
+      await scrollPage(getPage(pageId), direction, amount ?? 800)
+      return actionResult(pageId, `向${direction === 'down' ? '下' : '上'}滚动`)
+    },
+
+    // —————————————————————— 错误（errors） ——————————————————————
+    async browserErrors(pageId, options) {
+      const window = getPage(pageId)
+      const types = options?.types ?? ['error', 'warning']
+      const limit = options?.limit ?? 50
+      const console = await listConsoleMessages(window, {
+        types,
+        ...(options?.includeStackTraces === undefined
+          ? {}
+          : { includeStackTraces: options.includeStackTraces }),
+        pageSize: limit,
+      })
+      const network = await listNetworkRequests(window, { pageSize: 500 })
+      const failedRequests = network.requests
+        .filter((request) => request.failed || (request.status ?? 200) >= 400)
+        .slice(0, limit)
+      return {
+        pageId,
+        url: window.webContents.getURL(),
+        errors: console.messages,
+        failedRequests,
+        note:
+          failedRequests.length === 0 && console.messages.length === 0
+            ? '没有捕获到错误（若页面确实异常，可能异常发生在内省采集挂载之前）'
+            : undefined,
+      }
+    },
+
     // —————————————————————— 页面管理（navigation） ——————————————————————
-    async browserListPages() {
-      return listPages()
-    },
-
-    async browserSelectPage(pageId, options) {
-      return selectPage(pageId, options ?? {})
-    },
-
-    async browserNewPage(url, options) {
-      return newPage(url, options ?? {})
-    },
-
-    async browserClosePage(pageId) {
-      await closePage(pageId)
-      refsByPage.delete(pageId)
-      uidCounter.delete(pageId)
-      return { closed: pageId, pages: listPages() }
-    },
 
     async browserNavigatePage(pageId, options) {
       invalidateRefs(pageId)
       return navigatePage(pageId, options)
     },
 
-    async browserWaitFor(pageId, texts, timeout) {
-      return waitForText(pageId, texts, timeout)
-    },
-
     // —————————————————————— 仿真（emulation） ——————————————————————
-    async browserEmulate(pageId, options) {
-      await emulate(pageId, options)
-      return { pageId, applied: Object.keys(options) }
-    },
-
-    async browserResizePage(pageId, width, height) {
-      await resizePage(pageId, width, height)
-      return { pageId, width, height }
-    },
 
     // —————————————————————— 快照 / 截图 ——————————————————————
     browserTakeSnapshot: takeSnapshotFor,
@@ -390,11 +400,6 @@ export function createMcpHost(): McpHost {
       )
     },
 
-    async browserClickAt(pageId, x, y, options) {
-      await clickAt(getPage(pageId), x, y, { dblClick: options?.dblClick })
-      return actionResult(pageId, `在 (${x}, ${y}) 点击`, options?.includeSnapshot)
-    },
-
     async browserHover(pageId, uid, options) {
       const ref = refOf(pageId, uid)
       await hoverElement(getPage(pageId), ref.backendDOMNodeId)
@@ -422,21 +427,6 @@ export function createMcpHost(): McpHost {
       return actionResult(
         pageId,
         `填了 ${filled.tag}${filled.type ? `[type=${filled.type}]` : ''}「${ref.name ?? ''}」`,
-        options?.includeSnapshot,
-      )
-    },
-
-    async browserFillForm(pageId, elements, options) {
-      const window = getPage(pageId)
-      const done: string[] = []
-      for (const element of elements) {
-        const ref = refOf(pageId, element.uid)
-        await fillElement(window, ref.backendDOMNodeId, element.value)
-        done.push(`${ref.name ?? element.uid}=${element.value}`)
-      }
-      return actionResult(
-        pageId,
-        `批量填了 ${done.length} 项：${done.join('，')}`,
         options?.includeSnapshot,
       )
     },
@@ -472,44 +462,6 @@ export function createMcpHost(): McpHost {
       return result
     },
 
-    async browserListConsoleMessages(pageId, options) {
-      const page = await listConsoleMessages(getPage(pageId), options ?? {})
-      return { messages: page.messages, total: page.total }
-    },
-
-    async browserGetConsoleMessage(pageId, msgid) {
-      return readConsoleMessage(getPage(pageId), msgid)
-    },
-
-    async browserListNetworkRequests(pageId, options) {
-      const page = await listNetworkRequests(getPage(pageId), options ?? {})
-      return { requests: page.requests, total: page.total }
-    },
-
-    async browserGetNetworkRequest(pageId, options) {
-      return getNetworkRequest(getPage(pageId), options ?? {})
-    },
-
-    async browserGetCssStyles(pageId, uid, options) {
-      const ref = refOf(pageId, uid)
-      const page = await getCssStyles(getPage(pageId), ref.backendDOMNodeId, options ?? {})
-      return { rules: page.rules, total: page.total, pageIdx: page.pageIdx }
-    },
-
     // —————————————————————— 性能（performance） ——————————————————————
-    async browserPerformanceStartTrace(pageId, options) {
-      await startTrace(getPage(pageId), {
-        ...(options?.reload === undefined ? {} : { reload: options.reload }),
-      })
-      return { pageId, note: '已开始录制；用 monospace_performance_stop_trace 停止并落盘。' }
-    },
-
-    async browserPerformanceStopTrace(pageId, options) {
-      const trace = await stopTrace(getPage(pageId), {
-        ...(options?.filePath === undefined ? {} : { filePath: options.filePath }),
-        ...(options?.filePath === undefined ? { fallbackDir: artifactsDir } : {}),
-      })
-      return { pageId, path: trace.path, note: `共 ${trace.events} 个 trace 事件。` }
-    },
   }
 }

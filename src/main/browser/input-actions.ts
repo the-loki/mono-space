@@ -457,3 +457,19 @@ export async function handleDialog(
     ...(promptText === undefined ? {} : { promptText }),
   })
 }
+
+/** 滚动（真实滚轮事件，不是脚本滚动）。 */
+export async function scrollPage(
+  window: BrowserWindow,
+  direction: 'up' | 'down',
+  amount = 800,
+): Promise<void> {
+  const { width, height } = window.getContentBounds()
+  await cdpSend(window, 'Input.dispatchMouseEvent', {
+    type: 'mouseWheel',
+    x: Math.round(width / 2),
+    y: Math.round(height / 2),
+    deltaX: 0,
+    deltaY: direction === 'down' ? amount : -amount,
+  })
+}
