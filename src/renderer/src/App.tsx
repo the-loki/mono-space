@@ -13,7 +13,11 @@ export default function App(): React.JSX.Element {
       <header className="flex items-baseline gap-3">
         <h1 className="text-xl font-semibold">MonoSpace</h1>
         <p className="text-sm opacity-70">游戏资产管家</p>
-        <p className="ml-auto text-xs opacity-50" data-testid="ping-result">
+        {/**
+         * 这里是 preload 往返（contextBridge）的观测锚点，e2e 断言它等于 'pong:hello'。
+         * 但对用户没有意义，所以**不渲染到界面上**（hidden）—— 别把调试痕迹留在标题栏。
+         */}
+        <p className="hidden" data-testid="ping-result">
           {pong}
         </p>
       </header>
