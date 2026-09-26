@@ -44,7 +44,7 @@ describe('页面落库 + 接口合并（应用侧确定性逻辑）', () => {
       fetchApiKeys: async () => [{ machineName: 'beta', keyIndex: 1, code: 'API-ONLY' }],
     })
 
-    expect(result.merge).toEqual({ status: 'merged', supplemented: 1 })
+    expect(result.merge).toEqual({ status: 'merged', apiKeys: 1, apiCoded: 1, supplemented: 1 })
     // 页面那两条先落的（write 是页面那一份的统计）。
     expect(result.write.keys.inserted).toBe(2)
     expect(codesOf(repository, 'ORDER-1')).toEqual({
@@ -74,7 +74,7 @@ describe('页面落库 + 接口合并（应用侧确定性逻辑）', () => {
       read: pageRead([{ name: 'Alpha', revealed: true, code: 'PAGE-CODE' }]),
       fetchApiKeys: async () => [],
     })
-    expect(result.merge).toEqual({ status: 'merged', supplemented: 0 })
+    expect(result.merge).toEqual({ status: 'merged', apiKeys: 0, apiCoded: 0, supplemented: 0 })
     expect(codesOf(repository, 'ORDER-1')).toEqual({ alpha: 'PAGE-CODE' })
     repository.close()
   })
@@ -168,10 +168,32 @@ describe('接口那一趟失败只降级为「没合并」（页面那份不白�
     // 不抛（上面能走到这里就是证明），且如实降级。
     expect(result.merge.status).toBe('failed')
     expect(result.merge.supplemented).toBe(0)
+    // 失败时那两个诊断数字必须归零，不能留下上一次的残留值。
+    expect(result.merge.apiKeys).toBe(0)
+    expect(result.merge.apiCoded).toBe(0)
     expect(result.merge.reason).toContain('模拟接口失败')
     // 页面数据必须已经落库，一条不少。
     expect(result.write.keys.inserted).toBe(2)
     expect(codesOf(repository, 'ORDER-1')).toEqual({ alpha: 'PAGE-CODE', gamma: null })
+    repository.close()
+  })
+
+  it('如实报告接口看到了几条、其中几条带码（解析失效藏不住）', async () => {
+    const repository = openLedger({ path: ':memory:' })
+    const result = await ingestPageOrder({
+      repository,
+      read: pageRead([{ name: 'Alpha', revealed: true, code: 'PAGE-CODE' }]),
+      fetchApiKeys: async () => [
+        { machineName: 'beta', keyIndex: 1, code: 'API-ONLY' },
+        { machineName: 'gamma', keyIndex: 2, code: null },
+        // 纯空白也算「没码」——落库时它会被 trim 掉，不能在这里蒙混。
+        { machineName: 'delta', keyIndex: 3, code: '   ' },
+      ],
+    })
+
+    // 看到 3 条、只有 1 条带码：另外两条按「没码不猜」跳过，所以只补 1 条。
+    // 若哪天码字段名解析错了（全部无码），apiCoded 会掉到 0 —— 这正是这份报告的用途。
+    expect(result.merge).toEqual({ status: 'merged', apiKeys: 3, apiCoded: 1, supplemented: 1 })
     repository.close()
   })
 
@@ -213,7 +235,7 @@ describe('接口那一趟确实走的是订单详情端点（经注入的假客�
     })
 
     expect(http.calls).toEqual(['https://www.humblebundle.com/api/v1/order/ORDER-1?all_tpkds=true'])
-    expect(result.merge).toEqual({ status: 'merged', supplemented: 1 })
+    expect(result.merge).toEqual({ status: 'merged', apiKeys: 1, apiCoded: 1, supplemented: 1 })
     expect(codesOf(repository, 'ORDER-1')).toEqual({
       alpha: 'PAGE-CODE',
       'api:beta#1': 'API-ONLY',

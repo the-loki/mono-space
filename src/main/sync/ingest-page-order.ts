@@ -20,9 +20,19 @@ import { buildPageOrder, type PageOrderRead } from '../data/page-ingest'
 import type { LedgerRepository } from '../data/repository'
 import type { SyncResult } from '../data/types'
 
-/** 接口那一趟的结果：成功就说补了几条，失败就说清原因（都如实记）。 */
+/** 接口那一趟的结果：成功就说清「看到几条 / 几条带码 / 补了几条」，失败就说清原因（都如实记）。 */
 export interface PageMergeReport {
   status: 'merged' | 'failed'
+  /**
+   * 接口这一趟**看到的** key 条数。
+   *
+   * 为什么必须记：`supplemented: 0` 有三种成因——「页面本来就没缺口」（正常）、
+   * 「接口返回空」（可能解析字段名不对）、「接口挂了」（status=failed）。
+   * 只看 supplemented 分不清，等于没有证据；记下看到几条，静默失效才藏不住。
+   */
+  apiKeys: number
+  /** 其中**带兑换码**的条数（只有带码才能按码对齐；为 0 说明码字段名可能不对）。 */
+  apiCoded: number
   /** 实际补充进台账的 key 条数（页面没有的码）。失败时为 0。 */
   supplemented: number
   /** 失败原因（降级用，不抛）。成功时缺省。 */
@@ -62,7 +72,13 @@ export async function ingestPageOrder(options: IngestPageOrderOptions): Promise<
   } catch (error) {
     return {
       write,
-      merge: { status: 'failed', supplemented: 0, reason: describeError(error) },
+      merge: {
+        status: 'failed',
+        apiKeys: 0,
+        apiCoded: 0,
+        supplemented: 0,
+        reason: describeError(error),
+      },
     }
   }
 
@@ -74,7 +90,12 @@ export async function ingestPageOrder(options: IngestPageOrderOptions): Promise<
     (sum, bundle) => sum + bundle.keys.filter(isApiSupplementKey).length,
     0,
   )
-  return { write, merge: { status: 'merged', supplemented } }
+  // 看到几条、其中几条带码，都如实上报：`supplemented` 为 0 时，这两个数字才是「到底有没有缺口」的证据。
+  const coded = apiKeys.filter((key) => Boolean(key.code?.trim())).length
+  return {
+    write,
+    merge: { status: 'merged', apiKeys: apiKeys.length, apiCoded: coded, supplemented },
+  }
 }
 
 function describeError(error: unknown): string {
