@@ -40,6 +40,12 @@ export interface AgentModelConfig {
   contextWindow?: number
   maxTokens?: number
   reasoning?: boolean
+  /**
+   * 模型可接受的输入模态，例如 `['text', 'image']`。
+   * 必须能带出去：`monospace_screenshot` 返回的是 **image 内容块**，没声明支持图片的模型会
+   * 看不了截图（这是本应用的核心能力之一，不是可选项）。
+   */
+  input?: string[]
 }
 
 export type ParseAgentConfig =
@@ -73,6 +79,10 @@ export function parseAgentConfig(raw: unknown): ParseAgentConfig {
   const maxTokens = Number(record.maxTokens)
   if (Number.isFinite(maxTokens) && maxTokens > 0) config.maxTokens = maxTokens
   if (typeof record.reasoning === 'boolean') config.reasoning = record.reasoning
+  if (Array.isArray(record.input)) {
+    const input = record.input.filter((value): value is string => typeof value === 'string')
+    if (input.length > 0) config.input = input
+  }
   return { ok: true, config }
 }
 
@@ -85,6 +95,7 @@ export function buildModelsJson(config: AgentModelConfig): Record<string, unknow
   if (config.contextWindow) modelEntry.contextWindow = config.contextWindow
   if (config.maxTokens) modelEntry.maxTokens = config.maxTokens
   if (config.reasoning !== undefined) modelEntry.reasoning = config.reasoning
+  if (config.input?.length) modelEntry.input = config.input
 
   const provider: Record<string, unknown> = {
     api: config.api ?? 'anthropic-messages',
@@ -142,6 +153,10 @@ export function parseModelsJson(raw: unknown): ParseAgentConfig {
     reasoning:
       typeof firstModel === 'object' && firstModel !== null
         ? (firstModel as Record<string, unknown>).reasoning
+        : undefined,
+    input:
+      typeof firstModel === 'object' && firstModel !== null
+        ? (firstModel as Record<string, unknown>).input
         : undefined,
   })
 }

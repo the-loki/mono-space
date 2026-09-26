@@ -89,6 +89,20 @@ describe('models.json 形状（照本机参照配置）', () => {
     expect(provider.models).toEqual([{ id: 'm1', _launch: true }])
   })
 
+  it('input 模态要落盘且能读回（截图靠它，丢了就看不了图）', async () => {
+    const json = buildModelsJson({
+      provider: 'ollama',
+      model: 'm1',
+      apiKey: 'k',
+      input: ['text', 'image'],
+    })
+    const providers = json.providers as Record<string, { models: { input?: string[] }[] }>
+    expect(providers.ollama.models[0].input).toEqual(['text', 'image'])
+    expect(parseModelsJson(json)).toMatchObject({ ok: true })
+    const parsed = parseModelsJson(json)
+    expect(parsed.ok && parsed.config.input).toEqual(['text', 'image'])
+  })
+
   it('Pi 形状能反解回扁平配置（往返一致）', () => {
     const json = buildModelsJson({
       provider: 'ollama',
