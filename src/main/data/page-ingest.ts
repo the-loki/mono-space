@@ -95,6 +95,9 @@ export function resolvePlatform(evidence: {
  * 实测：页面本身就不带平台信息的订单很多（第三方 key 行只有名字+码）。
  * 逼着 agent 必填会让它拿空串或页面上别处的链接充数 —— 那比「不知道」更糟，
  * 所以给一个**明确说不知道**的口子，好过让它编。
+ *
+ * 空串同样按「无」处理（下面的 `if (!raw) return 'unknown'`）：实测 agent 有时就是交空串，
+ * 若把空串做成**校验失败**，整笔写入会回滚 —— 一行没写被放大成整单丢失。
  */
 const NO_LINK_MARKERS = ['无', 'none', 'n/a', 'na', '-', '—', 'unknown']
 

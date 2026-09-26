@@ -299,3 +299,32 @@ describe('逐层回退判平台（DOM 实测的三种真实情形）', () => {
     ).toBe('unknown')
   })
 })
+
+describe('空串按「无」处理（不让校验失败毁掉整单）', () => {
+  it('空串归 unknown，且仍能靠资产名回到平台', () => {
+    expect(parsePlatform('')).toBe('unknown')
+    expect(
+      resolvePlatform({
+        name: 'Nanite Series: Harbor Kit (FAB Professional License Key)',
+        redemptionUrl: '',
+      }),
+    ).toBe('fab')
+  })
+
+  it('整单都能落库：39 行 FAB 全是空串也不该有一条失败', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'gk',
+      productName: 'Battle Hardened Game Asset Bundle by Hivemind',
+      keys: [
+        { name: 'A (FAB Professional License Key)', revealed: true, code: 'X', redemptionUrl: '' },
+        {
+          name: 'B (FAB Professional License Key)',
+          revealed: true,
+          code: 'Y',
+          redemptionUrl: '无',
+        },
+      ],
+    })
+    expect(order.bundles[0]?.keys.map((k) => k.platform)).toEqual(['fab', 'fab'])
+  })
+})
