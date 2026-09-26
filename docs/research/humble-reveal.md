@@ -407,3 +407,36 @@ curl -sL https://raw.githubusercontent.com/BatteredBunny/humblebundle-games/main
 - 订单/Choice/Trove 端点：`smbl64` `internal/api/humble.go`；`UncleGoogle/galaxy-integration-humblebundle` `src/webservice.py` + `src/consts.py`；`xtream1101/humblebundle-downloader` `download_library.py`；`luckydonald` `constants.py`；`BatteredBunny` `src/api.rs`/`src/month.rs`。
 - keytype 分类与跳过：`gfargo` `humble_bundle_keys/choice.py::categorize_keytype()`；`humble_bundle_keys/api.py` `_SKIP_CATEGORIES`；issue #4/#5。
 - `_simpleauth_sess` 结构：`UncleGoogle/galaxy-integration-humblebundle` `src/webservice.py::_decode_user_id()`；`BatteredBunny` `src/cookies.rs`。
+
+---
+
+## 附：真实库实测结构（2026-09-26，`#29` 回填）
+
+首次真实登录后跑同步，用**真实账号**（68 单）验证了订单结构。这批数据推翻了规格里两个猜测。
+
+### 订单字段实测
+
+| 字段 | 实测值 | 含义 |
+| --- | --- | --- |
+| `product.category` | **恒为 `"bundle"`**（68/68） | **不能**用它判商品类型；`SOFTWARE_CATEGORIES` / `GAME_CATEGORIES` 永不命中 |
+| `product.machine_name` 后缀 | `_softwarebundle` **66**、`_bookbundle` 1、`_bundle` 1 | **资产包就是 `_softwarebundle`** |
+| `tpk.key_type` 分布 | `generic` 46、`external_key` 16、`epic` 9、`steam` 2 | 只有 2 单是 Steam 键 → 游戏判据靠 Steam 键，不能靠 category |
+| `subproducts[].downloads[].platform` | `other` 5、`audio` 7、`ebook` 2、`video` 4 | `ebook` 平台可作电子书判据 |
+| `tpk.key_type_human_name` | 出现 `Unity`、`Epic Games Store`、`Epic`、`Synty Studios`、`GameDev Market`、`Leartes Studios` | **可用的引擎信号** |
+| `tpk.machine_name` | 出现过 `softwarebundle_unity` | 引擎信号 |
+
+### 结论（已写进 `map-order.ts`）
+
+1. **`_softwarebundle` 不是「软件噪音」，而是引擎资产包本体**——早期把它当噪音跳过，导致真实库 68 单**全部丢弃**（映射 0 条、key 0 条）。
+2. 游戏判据**主要靠 Steam 键**（`steam_app_id` / `key_type === 'steam'`）。
+3. `Epic Games Store` 是**交付渠道**而非引擎，引擎识别里必须排在 `unity` / `unreal` 之后，否则「Unity 素材 + Epic 键」会被误标成 Unreal。
+4. **只读 GET 不需页面上下文**：`session.fetch`（主进程、带分区 cookie）就能拿到 `/api/v1/user/order`（200）。
+
+### 修复后的真实同步结果
+
+```
+订单 68 → 入库 65，跳过 3（ebook 1… 实为 3：ebook 2 + game 1）
+key 952 条；揭示状态：未揭示 148 / 已揭示未兑换 804 / 已兑换 0
+引擎分布：unreal 749、unity 143、unknown 60
+同步耗时 ≈ 18s（68 单详情，页内并发 10）
+```

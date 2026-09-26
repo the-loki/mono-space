@@ -37,11 +37,18 @@ export interface MappedOrders {
   keyCount: number
 }
 
-/** 引擎识别模式，顺序即优先级（Unreal/Epic/Fab → Unity → GameMaker）。 */
+/**
+ * 引擎识别模式，顺序即优先级。
+ *
+ * 注意：`Epic Games Store` 是**交付渠道**而不是引擎，所以它排在最后——
+ * 真实库里有「Unity 素材包但发 Epic Games Store 键」的单（`#29`），
+ * 让渠道压过素材本身会把 Unity 误标成 Unreal。
+ */
 const ENGINE_PATTERNS: ReadonlyArray<readonly [Engine, RegExp]> = [
-  ['unreal', /unreal|epic games|\bepic\b|\bfab\b/i],
+  ['unreal', /unreal|\bfab\b/i],
   ['unity', /unity/i],
   ['gamemaker', /game\s?maker/i],
+  ['unreal', /epic games store|epic games|\bepic\b/i],
 ]
 
 const SOFTWARE_CATEGORIES = new Set(['software', 'softwarebundle'])
@@ -110,12 +117,16 @@ function classifySkip(order: HumbleOrder): SkipReason | null {
   const category = (order.product?.category ?? '').toLowerCase()
   const tpkds = collectTpkds(order)
 
-  if (machineName.endsWith('_softwarebundle') || SOFTWARE_CATEGORIES.has(category)) {
-    return 'software'
-  }
-  if (collectPlatforms(order).includes('ebook') || EBOOK_CATEGORIES.has(category)) {
+  // 电子书：真实库用 `_bookbundle` 后缀 + `ebook` 平台（实测 1/68）。
+  if (
+    machineName.endsWith('_bookbundle') ||
+    collectPlatforms(order).includes('ebook') ||
+    EBOOK_CATEGORIES.has(category)
+  ) {
     return 'ebook'
   }
+
+  // 游戏：主要靠 **Steam 键**。真实库里 `product.category` 恒为 `bundle`，靠它判不出来。
   if (
     tpkds.some((tpk) => tpk.steam_app_id !== null && tpk.steam_app_id !== undefined) ||
     tpkds.some((tpk) => (tpk.key_type ?? '').toLowerCase() === 'steam') ||
@@ -123,6 +134,15 @@ function classifySkip(order: HumbleOrder): SkipReason | null {
   ) {
     return 'game'
   }
+
+  // ⚠️ **不按 `machine_name` 的 `_softwarebundle` 后缀跳过**。
+  // Humble 用该后缀标「软件类商品」，而游戏开发资产包（Unity / Unreal 素材）正是这一类：
+  // 实测 66/68 单都是它（`#29`）。把它当噪音会让真实库映射出 0 条。
+  // 只有 `category` 明确是软件时才跳过。
+  if (SOFTWARE_CATEGORIES.has(category)) {
+    return 'software'
+  }
+
   return null
 }
 

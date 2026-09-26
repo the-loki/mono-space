@@ -98,15 +98,65 @@ describe('订单映射引擎资产包', () => {
     expect(result).toEqual({ ok: false, reason: 'ebook', remoteId: 'order-ebook' })
   })
 
-  it('软件包按 software 跳过', () => {
+  // 回归（#29）：真实库里 66/68 单是 `_softwarebundle` 后缀的游戏开发资产包，
+  // 早期把它当「软件」跳过 → 真实库映射出 0 条。
+  it('`_softwarebundle` 资产包必须被映射，不能当软件跳过', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-asset',
+        product: {
+          machine_name: 'bestleartesgiganticgamedevassetstoolsmegabundle_softwarebundle',
+          human_name: 'Best of Leartes - Gigantic Game Dev Assets & Tools',
+          category: 'bundle',
+        },
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.order.remoteId).toBe('order-asset')
+  })
+
+  it('只有 category 明确是 software 时才按 software 跳过', () => {
     const result = mapOrder(
       unrealOrder({
         gamekey: 'order-soft',
-        product: { machine_name: 'mixcraft8_softwarebundle', human_name: '音频软件' },
+        product: {
+          machine_name: 'mixcraft8',
+          human_name: '音频软件',
+          category: 'software',
+        },
       }),
     )
 
     expect(result).toEqual({ ok: false, reason: 'software', remoteId: 'order-soft' })
+  })
+
+  // 实测：真实库 product.category 恒为 'bundle'，所以游戏判据只能靠 Steam 键。
+  it('category 是 bundle 但带 Steam 键 → 仍按 game 跳过', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-steam',
+        product: { machine_name: 'something_bundle', human_name: '某游戏', category: 'bundle' },
+        tpkd_dict: { all_tpks: [{ machine_name: 'g', key_type: 'steam', steam_app_id: 99 }] },
+      }),
+    )
+
+    expect(result).toEqual({ ok: false, reason: 'game', remoteId: 'order-steam' })
+  })
+
+  it('`_bookbundle` 后缀按 ebook 跳过', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-book',
+        product: {
+          machine_name: 'sometechbooks_bookbundle',
+          human_name: '技术书合集',
+          category: 'bundle',
+        },
+      }),
+    )
+
+    expect(result).toEqual({ ok: false, reason: 'ebook', remoteId: 'order-book' })
   })
 
   it('游戏本体（Steam key）按 game 跳过', () => {
@@ -137,22 +187,113 @@ describe('批量映射与跳过统计', () => {
         gamekey: 'order-ebook',
         subproducts: [{ downloads: [{ platform: 'ebook' }] }],
       }),
+      // 真实库主力：`_softwarebundle` 资产包（#29）——必须被映射，不是跳过。
       unrealOrder({
-        gamekey: 'order-soft',
-        product: { machine_name: 'something_softwarebundle' },
+        gamekey: 'order-asset',
+        product: {
+          machine_name: 'bestsyntygamedevassets_softwarebundle',
+          human_name: 'The Best of Synty Game Dev Assets',
+          category: 'bundle',
+        },
+      }),
+      unrealOrder({
+        gamekey: 'order-book',
+        product: { machine_name: 'book_bookbundle', category: 'bundle' },
       }),
       unrealOrder({
         gamekey: 'order-game',
+        product: { machine_name: 'game_bundle', category: 'bundle' },
         tpkd_dict: { all_tpks: [{ machine_name: 'g', steam_app_id: 1 }] },
       }),
     ]
 
     const mapped = mapOrders(orders)
 
-    expect(mapped.orders).toHaveLength(1)
-    expect(mapped.bundleCount).toBe(1)
-    expect(mapped.keyCount).toBe(2)
-    expect(mapped.counts).toEqual({ ebook: 1, software: 1, game: 1, malformed: 0 })
-    expect(mapped.skipped.map((item) => item.reason)).toEqual(['ebook', 'software', 'game'])
+    // 5 单：默认 Unreal 资产包 + `_softwarebundle` 资产包被映射；
+    // `ebook` 平台单 + `_bookbundle` 单进 ebook 桶；Steam 键单进 game 桶。
+    expect(mapped.orders).toHaveLength(2)
+    expect(mapped.counts).toEqual({ ebook: 2, software: 0, game: 1, malformed: 0 })
+    expect(mapped.skipped.map((item) => item.reason)).toEqual(['ebook', 'ebook', 'game'])
+  })
+})
+
+describe('引擎识别（真实库信号，见 #29）', () => {
+  it('从 key_type_human_name 认出 Unity', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-unity',
+        product: { machine_name: 'some_softwarebundle', category: 'bundle' },
+        tpkd_dict: {
+          all_tpks: [{ machine_name: 'x', key_type: 'external_key', key_type_human_name: 'Unity' }],
+        },
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.order.bundles[0].engine).toBe('unity')
+  })
+
+  it('从 tpk.machine_name 认出 Unity（softwarebundle_unity）', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-unity2',
+        product: { machine_name: 'some_softwarebundle', category: 'bundle' },
+        tpkd_dict: { all_tpks: [{ machine_name: 'softwarebundle_unity', key_type: 'generic' }] },
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.order.bundles[0].engine).toBe('unity')
+  })
+
+  it('Epic Games Store 只是交付渠道，不压过 Unity 素材本身', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-mixed',
+        product: { machine_name: 'mixed_softwarebundle', category: 'bundle' },
+        tpkd_dict: {
+          all_tpks: [
+            { machine_name: 'a', key_type: 'epic', key_type_human_name: 'Epic Games Store' },
+            { machine_name: 'b', key_type: 'external_key', key_type_human_name: 'Unity' },
+          ],
+        },
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.order.bundles[0].engine).toBe('unity')
+  })
+
+  it('认出 Unreal（产品名带 Unreal Engine）', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-ue',
+        product: {
+          machine_name: 'arghanion_softwarebundle',
+          human_name: 'The Unreal Engine Space & Sci-Fi Mastery Kit',
+          category: 'bundle',
+        },
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.order.bundles[0].engine).toBe('unreal')
+  })
+
+  it('毫无引擎线索 → unknown', () => {
+    const result = mapOrder(
+      unrealOrder({
+        gamekey: 'order-unknown',
+        product: { machine_name: 'allinonegamedevbundle_softwarebundle', category: 'bundle' },
+        tpkd_dict: {
+          all_tpks: [
+            { machine_name: 'k', key_type: 'generic', key_type_human_name: 'Eldamar Studio' },
+          ],
+        },
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.order.bundles[0].engine).toBe('unknown')
   })
 })
