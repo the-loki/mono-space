@@ -17,12 +17,9 @@ import { openStoreView } from '../browser/store-view'
 import { ChannelTimeoutError, createWindowCommandChannel } from '../redeem/channel'
 import { redeemOne } from '../redeem/flow'
 import { createRedeemPorts } from '../redeem/page-driver'
-import { revealOne } from '../reveal/flow'
-import { createRevealPorts } from '../reveal/page-driver'
 import { ledgerRepository } from './ledger'
 import { createDefaultSyncClient } from './sync'
 
-export const TASK_REVEAL_CHANNEL = 'tasks:reveal'
 export const TASK_REDEEM_CHANNEL = 'tasks:redeem'
 export const TASK_LOGIN_CHANNEL = 'tasks:login'
 
@@ -126,33 +123,6 @@ export interface TaskIpcResult {
   note: string
 }
 
-export async function runReveal(keyId: number): Promise<TaskIpcResult> {
-  const repository = ledgerRepository()
-  const detail = repository.getKey(keyId)
-  if (!detail) throw new Error(`key 不存在：${keyId}`)
-
-  const { keytype, keyindex } = parseKeyRemoteId(detail.keyRemoteId, detail.bundleRemoteId)
-  // name 必须带上：页面上认控件靠显示名（见 RevealInput.name 的说明）。
-  const input = { keyId, gamekey: detail.orderRemoteId, keytype, keyindex, name: detail.name }
-
-  const storeSession = getStoreSession()
-  // 揭示是「操作页面」：打开这一单的专属页（无分页），页面上的揭示控件本身就是入口。
-  const view = await openStoreView(storeSession, humbleOrderUrl(detail.orderRemoteId), {
-    show: true,
-    exclusive: true,
-  })
-
-  return revealOne(
-    input,
-    createRevealPorts({
-      window: getPage(view.id),
-      repository,
-      // 只读客户端：仅用于**核对**（这条 key 是否已揭示）与**查缺口**，不用于取码。
-      client: createDefaultSyncClient(storeSession),
-    }),
-  )
-}
-
 export async function runRedeem(keyId: number): Promise<TaskIpcResult> {
   const repository = ledgerRepository()
   const detail = repository.getKey(keyId)
@@ -179,10 +149,8 @@ export async function runRedeem(keyId: number): Promise<TaskIpcResult> {
 
 /** 注册动作 IPC。重复调用安全。 */
 export function registerTaskIpc(): void {
-  ipcMain.removeHandler(TASK_REVEAL_CHANNEL)
   ipcMain.removeHandler(TASK_REDEEM_CHANNEL)
 
-  ipcMain.handle(TASK_REVEAL_CHANNEL, (_event, keyId: number) => runReveal(keyId))
   ipcMain.handle(TASK_REDEEM_CHANNEL, (_event, keyId: number) => runRedeem(keyId))
   ipcMain.removeHandler(TASK_LOGIN_CHANNEL)
   ipcMain.handle(TASK_LOGIN_CHANNEL, () => runLogin())

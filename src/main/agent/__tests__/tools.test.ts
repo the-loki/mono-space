@@ -65,7 +65,14 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
     browserErrors: vi.fn(async () => ({ pageId: 1, url: 'u', errors: [], failedRequests: [] })),
     ordersSync: vi.fn(async () => ({ ok: true })),
     keysUpsert: vi.fn(async () => ({ written: 1, auditId: 'a#1' })),
-    keyReveal: vi.fn(async () => ({ status: 'revealed', attempts: 1, note: 'ok' })),
+    keyOpen: vi.fn(async (keyId: number) => ({
+      ok: true as const,
+      keyId,
+      name: 'n',
+      pageId: 1,
+      url: 'u',
+      title: 't',
+    })),
     keyRedeem: vi.fn(async () => ({ status: 'redeemed', attempts: 1, note: 'ok' })),
     ...overrides,
   }
@@ -124,7 +131,8 @@ describe('权限分层（#13）', () => {
     expect(layerOf(`${TOOL_PREFIX}orders_sync`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}keys_upsert`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}act`)).toBe('L1')
-    expect(layerOf(`${TOOL_PREFIX}key_reveal`)).toBe('L2')
+    // key_reveal 已删除：揭示不再有硬编码工具，由 agent 在页面上完成（key_open 只开页面）。
+    expect(layerOf(`${TOOL_PREFIX}key_open`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}key_redeem`)).toBe('L2')
   })
 })
@@ -255,11 +263,17 @@ describe('工具行为', () => {
     expect(host.keysUpsert).toHaveBeenCalledWith([{ keyId: 1, code: 'X', revealed: true }])
   })
 
-  it('不可逆工具转发到既有链路', async () => {
+  it('key_open 只开页面（揭示交给 agent 自己操作，不再有硬编码揭示工具）', async () => {
     const host = fakeHost()
-    await toolNamed(`${TOOL_PREFIX}key_reveal`, host).run({ keyId: 3 })
+    await toolNamed(`${TOOL_PREFIX}key_open`, host).run({ keyId: 3 })
+    expect(host.keyOpen).toHaveBeenCalledWith(3)
+    // 揭示工具必须**不存在**了：特征匹配已删除，全权交给 agent。
+    expect(createTools(host).map((t) => t.name)).not.toContain(`${TOOL_PREFIX}key_reveal`)
+  })
+
+  it('兑换仍转发到既有链路', async () => {
+    const host = fakeHost()
     await toolNamed(`${TOOL_PREFIX}key_redeem`, host).run({ keyId: 3 })
-    expect(host.keyReveal).toHaveBeenCalledWith(3)
     expect(host.keyRedeem).toHaveBeenCalledWith(3)
   })
 })

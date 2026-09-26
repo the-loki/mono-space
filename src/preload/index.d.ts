@@ -127,7 +127,6 @@ export interface MonoSpaceApi {
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {
     login(): Promise<MonoSpaceLoginWindow[]>
-    reveal(keyId: number): Promise<MonoSpaceTaskResult>
     redeem(keyId: number): Promise<MonoSpaceTaskResult>
   }
 }

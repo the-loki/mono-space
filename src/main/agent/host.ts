@@ -26,9 +26,11 @@ import {
 import { listConsoleMessages, listNetworkRequests, takeScreenshot } from '../browser/introspection'
 import { getPage, getSelectedPageId, listPages, navigatePage } from '../browser/pages'
 import { evaluateScript } from '../browser/script'
+import { getStoreSession } from '../browser/store-session'
+import { openStoreView } from '../browser/store-view'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
-import { runRedeem, runReveal } from '../ipc/tasks'
+import { humbleOrderUrl, runRedeem } from '../ipc/tasks'
 import { chooseCurrentPage } from './current-page'
 import type { BrowserActionResult, SnapshotResult } from './host-contract'
 import type { LedgerRow, LedgerStats, McpHost, UpsertResult } from './tools'
@@ -273,15 +275,26 @@ export function createMcpHost(): McpHost {
       return { written, auditId }
     },
 
-    async keyReveal(keyId) {
-      const outcome = await runReveal(keyId)
-      await appendAudit({
-        at: new Date().toISOString(),
-        tool: 'key_reveal',
-        keyIds: [keyId],
-        written: 1,
+    /**
+     * 打开这一单的订单页，**只开页面不点击**——揭示/兑换由 agent 自己在页面上操作。
+     * 这里是「给 agent 准备好工作台」，不是「替 agent 干活」。
+     */
+    async keyOpen(keyId) {
+      const detail = repository.getKey(keyId)
+      if (!detail) return { ok: false as const, message: `台账里没有 keyId=${keyId}` }
+      const view = await openStoreView(getStoreSession(), humbleOrderUrl(detail.orderRemoteId), {
+        show: true,
+        exclusive: true,
       })
-      return outcome
+      await appendAudit({ at: new Date().toISOString(), tool: 'key_open', keyIds: [keyId] })
+      return {
+        ok: true as const,
+        keyId,
+        name: detail.name,
+        pageId: view.id,
+        url: view.url,
+        title: view.title,
+      }
     },
 
     async keyRedeem(keyId) {

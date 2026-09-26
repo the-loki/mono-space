@@ -16,6 +16,25 @@ import { computeWindow, pagesForWindow, windowRowIndexes } from './window'
 const FALLBACK_VIEWPORT_HEIGHT = 480
 
 /** 台账页面。 */
+/**
+ * 交给 agent 的揭示任务描述。
+ *
+ * 刻意把「只点一次 / 不用接口取码 / 不确定就停下」写进去：揭示是不可逆的，
+ * 而流程已经没有代码兜底（原来那套探针+坐标点击已删除）。
+ */
+function revealPrompt(item: LedgerListItem): string {
+  return [
+    `请揭示台账里 keyId=${item.id} 的这条 key：「${item.name ?? '(无名)'}」。`,
+    '步骤：',
+    `1) monospace_key_open({keyId:${item.id}}) 打开它所属订单的专属页；`,
+    '2) monospace_dom 看清页面，找到这条 key 的揭示控件（未揭示时文字为「显示您的 … 密钥」）；',
+    '3) monospace_act(click) 点它 —— **不可逆，只点一次**；',
+    '4) 从页面读出密钥，用 monospace_keys_upsert 写回台账（keyId + code + revealed:true）；',
+    '5) 只回复「已写入 <密钥>」或失败原因。',
+    '纪律：**不要用接口取码**（接口只用于核对/查缺口）；拿不准就停下来告诉我，不要猜着点。',
+  ].join('\n')
+}
+
 export function LedgerPage(): JSX.Element {
   const [filter, setFilter] = useState<LedgerFilter>('all')
   const [scrollTop, setScrollTop] = useState(0)
@@ -74,6 +93,10 @@ export function LedgerPage(): JSX.Element {
   )
 
   // 揭示 / 兑换：会打开可见窗口供人接管（登录 / 验证码）；返回后刷新台账。
+  //
+  // 揭示**由 agent 在页面上完成**（特征匹配已删除，全权交给 agent）：
+  // 我们不硬编码选择器，也不按坐标点击 —— 由 agent 看页面、认控件、点、读码、写回。
+  // 兑换暂时仍走既有链路（它还没改）。
   const handleAction = useCallback(
     async (action: LedgerAction, item: LedgerListItem) => {
       setBusyKeyId(item.id)
@@ -81,14 +104,18 @@ export function LedgerPage(): JSX.Element {
         action === 'reveal' ? '揭示中…（若弹出窗口请完成登录）' : '兑换中…（若弹出窗口请完成登录）',
       )
       try {
-        const result =
-          action === 'reveal'
-            ? await window.api.tasks.reveal(item.id)
-            : await window.api.tasks.redeem(item.id)
+        if (action === 'reveal') {
+          const result = await window.api.agent.run(revealPrompt(item))
+          setActionNote(
+            result.ok
+              ? `揭示（agent）：${result.text || '(无文本输出)'}`
+              : `揭示（agent）失败：${result.message}`,
+          )
+          return
+        }
+        const result = await window.api.tasks.redeem(item.id)
         setActionNote(
-          `${action === 'reveal' ? '揭示' : '兑换'}结束：${result.status}${
-            result.pause ? `（暂停：${result.pause}）` : ''
-          }｜${result.note}`,
+          `兑换结束：${result.status}${result.pause ? `（暂停：${result.pause}）` : ''}｜${result.note}`,
         )
       } catch (cause: unknown) {
         setActionNote(cause instanceof Error ? cause.message : String(cause))

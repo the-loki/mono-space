@@ -80,9 +80,15 @@ export interface McpHost extends BrowserHost {
   keyContext(keyId: number): Promise<(LedgerRow & { redeemCode?: string | null }) | null>
   ordersSync(): Promise<unknown>
   keysUpsert(entries: KeyUpsertEntry[]): Promise<UpsertResult>
-  keyReveal(keyId: number): Promise<ActionOutcome>
+  /** 打开某条 key 的**订单专属页**（只开页面、不做任何点击），把后续操作交给 agent。 */
+  keyOpen(keyId: number): Promise<KeyOpenResult>
   keyRedeem(keyId: number): Promise<ActionOutcome>
 }
+
+/** `keyOpen` 的结果：agent 接下来就在这个页面上干活。 */
+export type KeyOpenResult =
+  | { ok: true; keyId: number; name: string | null; pageId: number; url: string; title: string }
+  | { ok: false; message: string }
 
 /** 一个工具的定义：注入 Pi agent 所需的最小信息。 */
 export interface ToolSpec {
@@ -210,13 +216,18 @@ function createDomainTools(host: McpHost): ToolSpec[] {
       run: (input) => host.keysUpsert(input.entries as KeyUpsertEntry[]),
     },
     {
-      name: `${TOOL_PREFIX}key_reveal`,
-      title: 'MonoSpace 揭示某个 key（不可逆）',
+      name: `${TOOL_PREFIX}key_open`,
+      title: 'MonoSpace 打开某条 key 的订单页',
       description:
-        '让 MonoSpace 执行一次**揭示**（Humble，不可逆写操作）。会打开可见窗口；如需登录/reCAPTCHA，会停在**人在环路**并把 pause 原因回给你。',
-      layer: 'L2',
-      parameters: Type.Object({ keyId: Type.Integer({ minimum: 1 }) }),
-      run: (input) => host.keyReveal(input.keyId as number),
+        '打开某条 key 所属订单的专属页（`/downloads?key=<gamekey>`，只列这一单、无分页），' +
+        '并把它设为当前页面。**只开页面，不做任何点击**——揭示/兑换由你自己在这个页面上操作。' +
+        '用法：先 key_open，再 monospace_dom 看页面，然后用 monospace_act 点页面自己的控件，' +
+        '读到密钥后用 keys_upsert 写回台账。',
+      layer: 'L1',
+      parameters: Type.Object({
+        keyId: Type.Integer({ minimum: 1, description: '台账里的 key id（先 ledger_query 拿）' }),
+      }),
+      run: (input) => host.keyOpen(input.keyId as number),
     },
     {
       name: `${TOOL_PREFIX}key_redeem`,

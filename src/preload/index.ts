@@ -27,7 +27,6 @@ const api = {
   tasks: {
     /** 打开 Humble / Epic 登录页（登录态落在应用私有分区）。 */
     login: (): Promise<LoginWindowResult[]> => ipcRenderer.invoke('tasks:login'),
-    reveal: (keyId: number): Promise<TaskIpcResult> => ipcRenderer.invoke('tasks:reveal', keyId),
     redeem: (keyId: number): Promise<TaskIpcResult> => ipcRenderer.invoke('tasks:redeem', keyId),
   },
 }
