@@ -31,6 +31,7 @@ import {
   type LedgerView,
   type OrderSnapshotInput,
   type OrderSnapshotRecord,
+  type Platform,
   type RedeemStatus,
   type RevealStatus,
   type SyncedBundle,
@@ -71,6 +72,7 @@ const KEY_LIST_COLUMNS = `
   k.remote_id AS key_remote_id,
   k.name AS key_name,
   k.key_type AS key_type,
+  k.platform AS platform,
   k.reveal_status AS reveal_status,
   k.revealed_at AS revealed_at,
   k.redeem_status AS redeem_status,
@@ -246,6 +248,7 @@ export class LedgerRepository {
         `UPDATE keys
            SET name = COALESCE(?, name),
                key_type = COALESCE(?, key_type),
+               platform = COALESCE(?, platform),
                reveal_status = COALESCE(?, reveal_status),
                revealed_at = COALESCE(?, revealed_at),
                redeem_status = COALESCE(?, redeem_status),
@@ -271,16 +274,17 @@ export class LedgerRepository {
 
     const result = this.stmt(
       `INSERT INTO keys
-         (account_id, bundle_id, remote_id, name, key_type,
+         (account_id, bundle_id, remote_id, name, key_type, platform,
           reveal_status, revealed_at, redeem_status, redeemed_at, redeem_code,
           raw_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       this.accountId,
       bundleId,
       key.remoteId,
       nullable(key.name),
       nullable(key.keyType),
+      nullable(key.platform),
       key.revealStatus ?? 'unrevealed',
       nullable(key.revealedAt),
       key.redeemStatus ?? 'not_redeemed',
@@ -474,7 +478,8 @@ export class LedgerRepository {
               k.remote_id AS key_remote_id,
               k.name AS key_name,
               k.key_type AS key_type,
-              k.reveal_status AS reveal_status,
+              k.platform AS platform,
+  k.reveal_status AS reveal_status,
               k.revealed_at AS revealed_at,
               k.redeem_status AS redeem_status,
               k.redeemed_at AS redeemed_at,
@@ -497,6 +502,7 @@ export class LedgerRepository {
       keyRemoteId: text(row.key_remote_id) ?? '',
       keyName: text(row.key_name),
       keyType: text(row.key_type),
+      platform: (text(row.platform) ?? 'unknown') as Platform,
       revealStatus: (text(row.reveal_status) ?? 'unrevealed') as RevealStatus,
       revealedAt: text(row.revealed_at),
       redeemStatus: (text(row.redeem_status) ?? 'not_redeemed') as RedeemStatus,
@@ -569,6 +575,7 @@ function applyView(view: LedgerView | undefined, conditions: string[]): void {
 function mapKeyListItem(row: Record<string, SQLOutputValue>): KeyListItem {
   return {
     id: Number(row.id),
+    platform: (text(row.platform) ?? 'unknown') as Platform,
     accountId: text(row.account_id) ?? DEFAULT_ACCOUNT_ID,
     orderId: Number(row.order_id),
     orderRemoteId: text(row.order_remote_id) ?? '',

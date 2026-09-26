@@ -1,7 +1,7 @@
 /**
  * 状态 → 中文标签。揭示状态 / 兑换状态两列各自独立显示（规格 #14 §5）。
  */
-import type { Engine, RedeemStatus, RevealStatus } from './types'
+import type { Platform, RedeemStatus, RevealStatus } from './types'
 
 /** 揭示状态标签。 */
 export const REVEAL_STATUS_LABELS: Record<RevealStatus, string> = {
@@ -24,12 +24,19 @@ export const REDEEM_STATUS_LABELS: Record<RedeemStatus, string> = {
   needs_human: '待人工',
 }
 
-/** 引擎标签。 */
-export const ENGINE_LABELS: Record<Engine, string> = {
+/**
+ * 平台标签。
+ *
+ * **界面不显示引擎**（ADR-0003）：引擎来自接口的 machine_name，页面读取的 key 没有它，
+ * 显示出来永远是「未知引擎」。平台能从页面链接逐条读出，才有意义。
+ */
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  fab: 'Fab',
+  epic: 'Epic',
+  steam: 'Steam',
   unity: 'Unity',
-  unreal: 'Unreal',
-  gamemaker: 'GameMaker',
-  unknown: '未知引擎',
+  gog: 'GOG',
+  unknown: '未知',
 }
 
 /** 揭示状态标签，未知值原样回退，保证 UI 不崩。 */

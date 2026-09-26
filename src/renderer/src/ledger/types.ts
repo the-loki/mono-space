@@ -27,7 +27,13 @@ export type RevealStatus = LedgerListItem['revealStatus']
 export type RedeemStatus = LedgerListItem['redeemStatus']
 
 /** 引擎。 */
-export type Engine = LedgerListItem['engine']
+/**
+ * 平台：这条 key 在哪里兑换。**逐条判断**（ADR-0003）——同一订单页可能混着多个平台。
+ *
+ * 界面上**只显示平台，不显示引擎**：引擎来自接口的 machine_name 后缀，而页面读取的 key
+ * 没有 machine_name，页面驱动下引擎永远只能是「未知引擎」。
+ */
+export type Platform = LedgerListItem['platform']
 
 /** 导出格式。 */
 export type LedgerExportFormat = Parameters<LedgerApi['export']>[0]

@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import { currentSchemaVersion, type Migration, migrate } from '../migrate'
+import { currentSchemaVersion, MIGRATIONS, type Migration, migrate } from '../migrate'
 import { LEDGER_TABLES, SCHEMA_VERSION } from '../schema'
 
 /** 打开一个内存库用于测试。 */
@@ -23,8 +23,13 @@ describe('迁移', () => {
 
     expect(result.from).toBe(0)
     expect(result.to).toBe(SCHEMA_VERSION)
-    expect(result.applied).toEqual([SCHEMA_VERSION])
+    // 新库要把全部迁移按顺序跑完（v1 建表 + v2 加 platform 列）。
+    expect(result.applied).toEqual(MIGRATIONS.map((migration) => migration.version))
     expect(currentSchemaVersion(db)).toBe(SCHEMA_VERSION)
+
+    // v2 的产物：keys 长出了 platform 列（平台逐条判断，见 ADR-0003）。
+    const columns = db.prepare('PRAGMA table_info(keys)').all() as { name: string }[]
+    expect(columns.map((column) => column.name)).toContain('platform')
 
     const tables = listTables(db)
     for (const table of LEDGER_TABLES) {
@@ -44,7 +49,7 @@ describe('迁移', () => {
     expect(second.applied).toEqual([])
 
     const versions = db.prepare('SELECT version FROM schema_version ORDER BY version').all()
-    expect(versions).toEqual([{ version: SCHEMA_VERSION }])
+    expect(versions).toEqual(MIGRATIONS.map((migration) => ({ version: migration.version })))
     db.close()
   })
 

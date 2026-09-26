@@ -12,7 +12,47 @@
  *
  * 特征匹配已删除后，`keytype` / `keyindex` 不再被揭示流程需要，所以显示名做身份是够的。
  */
-import type { SyncedBundle, SyncedKey, SyncedOrder } from './types'
+import type { Platform, SyncedBundle, SyncedKey, SyncedOrder } from './types'
+
+/**
+ * 从「Redemption Instructions」链接（或它的文章名）解析平台。
+ *
+ * 实测形如：
+ *   https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem
+ *   → 文章名 How-to-Redeem-on-Epic-Games → epic
+ *
+ * **逐条判断**：同一订单页可能混着多个平台，所以判定入口是「那一行的链接」，不是页面级的某一个。
+ * 认不出就返回 `unknown` —— 不猜。
+ */
+const PLATFORM_TOKENS: readonly { token: RegExp; platform: Platform }[] = [
+  { token: /(^|[^a-z])fab([^a-z]|$)/, platform: 'fab' },
+  { token: /(^|[^a-z])epic([^a-z]|$)/, platform: 'epic' },
+  { token: /(^|[^a-z])steam([^a-z]|$)/, platform: 'steam' },
+  { token: /(^|[^a-z])unity([^a-z]|$)/, platform: 'unity' },
+  { token: /(^|[^a-z])gog([^a-z]|$)/, platform: 'gog' },
+]
+
+/** 取链接的文章名：去掉 #hash 与查询串，取最后一段路径，再去掉前导的数字 id。 */
+function articleNameOf(value: string): string {
+  const noHash = value.split('#')[0] ?? ''
+  const noQuery = noHash.split('?')[0] ?? ''
+  const segment =
+    noQuery
+      .split('/')
+      .filter((part) => part.length > 0)
+      .pop() ?? noQuery
+  return segment.replace(/^\d+-/, '')
+}
+
+export function parsePlatform(value: string | null | undefined): Platform {
+  const raw = (value ?? '').trim()
+  if (!raw) return 'unknown'
+  const haystack = articleNameOf(raw).toLowerCase()
+  for (const { token, platform } of PLATFORM_TOKENS) {
+    if (token.test(haystack)) return platform
+  }
+  return 'unknown'
+}
 
 /** agent 在页面上看到的一条 key。 */
 export interface PageKeyRead {
@@ -22,6 +62,10 @@ export interface PageKeyRead {
   revealed: boolean
   /** 已揭示时从页面读到的密钥明文；未揭示必须为空。 */
   code?: string | null
+  /** 这一行「Redemption Instructions」链接（或文章名）；平台由它解析得到。 */
+  redemptionUrl?: string | null
+  /** 已知平台时可直接给；给了就以它为准。 */
+  platform?: string | null
 }
 
 /** agent 在页面上读到的一整单。 */
@@ -85,6 +129,8 @@ export function buildPageOrder(read: PageOrderRead): SyncedOrder {
     name: key.name,
     // key_type 留空：页面不提供机器名，硬编一个假的是在制造假数据。
     keyType: null,
+    // 平台逐条解析：优先用 agent 给的，否则从那一行的 Redemption Instructions 链接里解。
+    platform: key.platform ? parsePlatform(key.platform) : parsePlatform(key.redemptionUrl),
     revealStatus: key.revealed ? 'revealed' : 'unrevealed',
     revealedAt: null,
     redeemStatus: 'not_redeemed',

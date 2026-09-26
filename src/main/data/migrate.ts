@@ -29,9 +29,17 @@ export interface MigrateResult {
 /** 内置迁移列表。新增变更时追加，并同步递增 SCHEMA_VERSION。 */
 export const MIGRATIONS: readonly Migration[] = [
   {
-    version: SCHEMA_VERSION,
+    // 固定 1：初始 schema 是冻结的历史，不再跟着 SCHEMA_VERSION 走
+    //（否则 bump 之后会和后续迁移撞号，assertAscending 会直接抛）。
+    version: 1,
     name: 'initial-ledger',
     up: (db) => db.exec(INITIAL_SCHEMA_SQL),
+  },
+  {
+    version: 2,
+    name: 'keys-platform',
+    // 平台（ADR-0003）：key 级、逐条判断。老库已有数据 → 加列即可，默认 NULL（读作 unknown）。
+    up: (db) => db.exec('ALTER TABLE keys ADD COLUMN platform TEXT'),
   },
 ]
 

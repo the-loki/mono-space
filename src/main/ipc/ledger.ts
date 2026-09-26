@@ -48,6 +48,7 @@ export function toKeyListItem(item: KeyListItem): KeyListItem {
   return {
     id: item.id,
     accountId: item.accountId,
+    platform: item.platform,
     orderId: item.orderId,
     orderRemoteId: item.orderRemoteId,
     orderProductName: item.orderProductName,

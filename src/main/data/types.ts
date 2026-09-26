@@ -55,10 +55,24 @@ export type Engine = 'unity' | 'unreal' | 'gamemaker' | 'unknown'
 export const ENGINES: readonly Engine[] = ['unity', 'unreal', 'gamemaker', 'unknown']
 
 /** 同步进来的单条 key。状态字段可选：未提供时既有行保持不变，新行为默认值。 */
+/**
+ * 平台：这条 key 在哪里兑换。
+ *
+ * **逐条判断**（ADR-0003 追加）：同一订单页可能混着多个平台的 key，所以它是 key 级属性，
+ * 由 agent 读那一行自己的「Redemption Instructions」链接得出。认不出一律 `unknown`。
+ *
+ * 为什么不叫 engine：`engine` 来自接口的 `machine_name` 后缀，而页面读取的 key 没有 machine_name
+ * —— 页面驱动下引擎永远推不出来。平台则相反，页面链接里就有。
+ */
+export type Platform = 'fab' | 'epic' | 'steam' | 'unity' | 'gog' | 'unknown'
+
+export const PLATFORMS: readonly Platform[] = ['fab', 'epic', 'steam', 'unity', 'gog', 'unknown']
+
 export interface SyncedKey {
   remoteId: string
   name?: string | null
   keyType?: string | null
+  platform?: Platform | null
   revealStatus?: RevealStatus
   revealedAt?: string | null
   redeemStatus?: RedeemStatus
@@ -121,6 +135,8 @@ export interface KeyListItem {
   keyRemoteId: string
   name: string | null
   keyType: string | null
+  /** 平台（逐条判断，见 `Platform`）。 */
+  platform: Platform
   revealStatus: RevealStatus
   revealedAt: string | null
   redeemStatus: RedeemStatus

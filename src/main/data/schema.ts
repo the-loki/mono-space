@@ -11,7 +11,7 @@
 import { REDEEM_STATUSES, REVEAL_STATUSES } from './types'
 
 /** 当前 schema 版本号。每次改表结构都追加一条迁移并递增。 */
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 /** 台账业务表清单（不含迁移记账表 schema_version）。 */
 export const LEDGER_TABLES: readonly string[] = [
@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS engine_asset_bundles (
   UNIQUE (account_id, order_id, remote_id)
 );
 
+-- 注意：keys 的 platform 列**不在这里**，由迁移 v2 的 ALTER 加上（初始 schema 冻结，
+-- 老库靠迁移升级；新库会按顺序跑完 v1+v2）。见 data/migrate.ts。
 CREATE TABLE IF NOT EXISTS keys (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   account_id    TEXT NOT NULL DEFAULT 'default',

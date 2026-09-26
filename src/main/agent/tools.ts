@@ -214,8 +214,23 @@ function createDomainTools(host: McpHost): ToolSpec[] {
             name: Type.String({ description: '资产显示名（页面上那一行的名字）' }),
             revealed: Type.Boolean({ description: '页面是否已揭示（能看到码为 true）' }),
             code: Type.Optional(Type.String({ description: '已揭示时从页面读到的密钥明文' })),
+            redemptionUrl: Type.Optional(
+              Type.String({
+                description:
+                  '这一行「Redemption Instructions」链接（href）。**平台由它解析**，所以要逐行给。',
+              }),
+            ),
+            platform: Type.Optional(
+              Type.String({
+                description: '已经知道平台时可直接给（fab/epic/steam/unity/gog）；给了就以它为准',
+              }),
+            ),
           }),
-          { description: '这一单在页面上看到的所有 key' },
+          {
+            description:
+              '这一单在页面上看到的所有 key。**平台逐条判断**：同一订单页可能混着多个平台，' +
+              '所以每条 key 要各自带它那一行的 redemptionUrl（或已知的 platform）。',
+          },
         ),
       }),
       run: (input) =>

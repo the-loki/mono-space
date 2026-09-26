@@ -5,7 +5,13 @@
  * 未揭示的 key 会不会被塞进码、撞名资产会不会被并成一条。
  */
 import { describe, expect, it } from 'vitest'
-import { buildPageOrder, pageBundleRemoteId, pageKeyRemoteIds, slug } from '../page-ingest'
+import {
+  buildPageOrder,
+  pageBundleRemoteId,
+  pageKeyRemoteIds,
+  parsePlatform,
+  slug,
+} from '../page-ingest'
 
 describe('slug：身份归一化', () => {
   it('小写、把空白与非字母数字折叠成下划线、去首尾', () => {
@@ -108,5 +114,81 @@ describe('buildPageOrder：只写页面上真实读到的东西', () => {
   it('订单身份就是 gamekey（与接口给的订单对齐，才谈得上核对/查缺口）', () => {
     const order = buildPageOrder({ orderGamekey: '  TXzbXSpBc3qfUc3M  ', keys: [] })
     expect(order.remoteId).toBe('TXzbXSpBc3qfUc3M')
+  })
+})
+
+describe('parsePlatform：从「Redemption Instructions」链接解平台', () => {
+  const EPIC =
+    'https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem'
+
+  it('实测过的真实链接 → epic', () => {
+    expect(parsePlatform(EPIC)).toBe('epic')
+  })
+
+  it('其它平台（文章名里就是平台名）', () => {
+    expect(
+      parsePlatform(
+        'https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-Steam',
+      ),
+    ).toBe('steam')
+    expect(
+      parsePlatform(
+        'https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-Unity',
+      ),
+    ).toBe('unity')
+    expect(
+      parsePlatform('https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-GOG'),
+    ).toBe('gog')
+    expect(
+      parsePlatform('https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-Fab'),
+    ).toBe('fab')
+  })
+
+  it('也接受直接给文章名（不一定是完整链接）', () => {
+    expect(parsePlatform('How-to-Redeem-on-Steam')).toBe('steam')
+  })
+
+  it('认不出就 unknown —— **不猜**', () => {
+    expect(
+      parsePlatform('https://support.humblebundle.com/hc/en-us/articles/123-Contact-Support'),
+    ).toBe('unknown')
+    expect(parsePlatform('')).toBe('unknown')
+    expect(parsePlatform(null)).toBe('unknown')
+    expect(parsePlatform(undefined)).toBe('unknown')
+  })
+
+  it('不会把无关词里的字母撞上（epic 需要是独立词）', () => {
+    expect(parsePlatform('https://example.com/help/epicenter-of-news')).toBe('unknown')
+  })
+})
+
+describe('平台逐条判断（用户明确：同一订单页可能混多个平台）', () => {
+  const EPIC = 'https://support.humblebundle.com/hc/en-us/articles/1-How-to-Redeem-on-Epic-Games'
+  const STEAM = 'https://support.humblebundle.com/hc/en-us/articles/2-How-to-Redeem-on-Steam'
+
+  it('同一单里两条 key 可以解出不同平台', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'Mixed1',
+      keys: [
+        { name: 'Alpha', revealed: true, code: 'A', redemptionUrl: EPIC },
+        { name: 'Beta', revealed: true, code: 'B', redemptionUrl: STEAM },
+      ],
+    })
+    const keys = order.bundles[0]?.keys ?? []
+    expect(keys[0]?.platform).toBe('epic')
+    expect(keys[1]?.platform).toBe('steam')
+  })
+
+  it('明确给了 platform 就以它为准（不看链接）', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'g',
+      keys: [{ name: 'X', revealed: true, code: 'A', platform: 'fab', redemptionUrl: STEAM }],
+    })
+    expect(order.bundles[0]?.keys[0]?.platform).toBe('fab')
+  })
+
+  it('没给链接也没给平台 → unknown（不默认成某个平台）', () => {
+    const order = buildPageOrder({ orderGamekey: 'g', keys: [{ name: 'X', revealed: false }] })
+    expect(order.bundles[0]?.keys[0]?.platform).toBe('unknown')
   })
 })

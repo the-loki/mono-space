@@ -4,7 +4,7 @@
  * 只渲染 KeyListItem 的字段——**没有兑换码列**（规格 #14 §5：列表不预加载明文）。
  */
 import type { JSX } from 'react'
-import { ENGINE_LABELS, redeemStatusLabel, revealStatusLabel } from './labels'
+import { PLATFORM_LABELS, redeemStatusLabel, revealStatusLabel } from './labels'
 import type { LedgerListItem } from './types'
 import { LEDGER_ROW_HEIGHT } from './window'
 
@@ -71,7 +71,9 @@ export function LedgerRow({ item, busy = false, onAction }: LedgerRowProps): JSX
       <span className="truncate text-slate-400" title={item.bundleName ?? item.bundleRemoteId}>
         {item.bundleName ?? item.bundleRemoteId}
       </span>
-      <span className="text-slate-400 text-xs">{ENGINE_LABELS[item.engine] ?? item.engine}</span>
+      <span className="text-slate-400 text-xs">
+        {PLATFORM_LABELS[item.platform] ?? item.platform}
+      </span>
       <span data-testid="reveal-status">
         <StatusPill tone={revealTone(item.revealStatus)}>
           {revealStatusLabel(item.revealStatus)}
