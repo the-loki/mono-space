@@ -5,7 +5,7 @@
  * 形状适配过来，这样浏览器各模块可以独立演进。
  *
  * 关键约定：**动作类方法都不带 pageId**——一律作用于「当前打开的那个 MonoSpace 页面」，
- * 由宿主在调用时解析（唯一解析点是 `host.ts` 的 `currentPageId()`，规则见 `current-page.ts`）。
+ * 由宿主在调用时解析（唯一解析点是 `host-browser.ts` 的 `currentPageId()`，规则见 `current-page.ts`）。
  * 唯一的例外是 `browserOpenPage`：它**创建**页面，返回的正是新页。
  */
 import type { PageInfo } from '../browser/pages'

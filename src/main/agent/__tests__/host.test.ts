@@ -1,5 +1,5 @@
 /**
- * 「当前页面」由宿主拥有（见 host-contract.ts 的约定与 host.ts 的 `currentPageId()`）。
+ * 「当前页面」由宿主拥有（见 host-contract.ts 的约定与 host-browser.ts 的 `currentPageId()`）。
  *
  * 收敛前：每个浏览器工具各自 `await host.browserCurrentPage()` 拿 pageId 再传下去。
  * 收敛后：宿主在**调用时**解析一次。这里钉住两件事：
