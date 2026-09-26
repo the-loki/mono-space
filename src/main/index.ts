@@ -1,7 +1,9 @@
+import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { initBrowser } from './browser'
+import { runGpuGuard, STABLE_MS } from './gpu-guard'
 import { registerLedgerIpc } from './ipc/ledger'
 import { registerSyncIpc } from './ipc/sync'
 import { registerTaskIpc } from './ipc/tasks'
@@ -36,7 +38,22 @@ function createWindow(): BrowserWindow {
   return window
 }
 
+// GPU 兜底要在 app ready **之前**决定是否加 --disable-gpu（晚了 Chromium 已经初始化）。
+const gpuSentinelPath = join(app.getPath('userData'), 'gpu-crash-sentinel')
+const gpuGuard = runGpuGuard({
+  sentinelExists: () => existsSync(gpuSentinelPath),
+  writeSentinel: () => writeFileSync(gpuSentinelPath, new Date().toISOString(), 'utf8'),
+  removeSentinel: () => rmSync(gpuSentinelPath, { force: true }),
+  disableGpu: () => app.commandLine.appendSwitch('disable-gpu'),
+})
+if (gpuGuard.recovered) {
+  console.warn('MonoSpace：上次启动疑似 GPU 崩溃，本次退回软件渲染（稳定后会自动恢复）。')
+}
+
 app.whenReady().then(() => {
+  // 稳定跑过一段时间就清哨兵，下次恢复硬件加速。
+  setTimeout(() => gpuGuard.markHealthy(), STABLE_MS).unref()
+
   // 最小连通性探针：证明 ESM 主进程 ↔ sandboxed preload ↔ 渲染进程的往返成立。
   ipcMain.handle('ping', (_event, message: string) => `pong:${message}`)
 
