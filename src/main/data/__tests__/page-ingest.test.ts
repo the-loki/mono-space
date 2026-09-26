@@ -10,6 +10,7 @@ import {
   pageBundleRemoteId,
   pageKeyRemoteIds,
   parsePlatform,
+  resolvePlatform,
   slug,
 } from '../page-ingest'
 
@@ -249,5 +250,52 @@ describe('没有 key 的订单也要记得住（音乐 / 电子书下载包之�
     expect(order.remoteId).toBe('gk2')
     expect(order.productName).toBeNull()
     expect(order.bundles).toEqual([])
+  })
+})
+
+describe('逐层回退判平台（DOM 实测的三种真实情形）', () => {
+  it('层 1 域名：Steam 的兑换按钮链接（词边界匹配不到 steampowered，域名层能）', () => {
+    expect(
+      resolvePlatform({
+        name: 'Learning Factory',
+        redemptionUrl: 'https://store.steampowered.com/account/registerkey?key=VV3GW-LG03X-5QZIH',
+      }),
+    ).toBe('steam')
+  })
+
+  it('层 2 文章 slug：Epic 的老格式链接', () => {
+    expect(
+      resolvePlatform({
+        name: 'Astronauts (Pack)',
+        redemptionUrl:
+          'https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem',
+      }),
+    ).toBe('epic')
+  })
+
+  it('层 3 资产名：40 行的 FAB 包里 39 行连链接都没有，名字写着 FAB', () => {
+    expect(
+      resolvePlatform({
+        name: 'Nanite Series: Harbor Kit (FAB Professional License Key)',
+        redemptionUrl: '无',
+      }),
+    ).toBe('fab')
+  })
+
+  it('名字里的平台词同样按词边界认，认不出就 unknown（不猜）', () => {
+    expect(resolvePlatform({ name: 'Elemental Auras VFX Pack', redemptionUrl: '无' })).toBe(
+      'unknown',
+    )
+    // 「Steamforged」不是 steam —— 别把资产名当关键词表乱撞
+    expect(resolvePlatform({ name: 'Steamforged Games Pack', redemptionUrl: '无' })).toBe('unknown')
+  })
+
+  it('数字 ID 的无 slug 文章链接仍归 unknown（这层救不了，得靠名字）', () => {
+    expect(
+      resolvePlatform({
+        name: 'Some Asset',
+        redemptionUrl: 'https://support.humblebundle.com/hc/en-us/articles/14325363915931',
+      }),
+    ).toBe('unknown')
   })
 })

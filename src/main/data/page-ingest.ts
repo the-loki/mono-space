@@ -45,6 +45,51 @@ function articleNameOf(value: string): string {
 }
 
 /**
+ * 域名里的平台标记。
+ *
+ * 为什么要单独一层：`PLATFORM_TOKENS` 用的是**词边界**，匹配不到 `steampowered.com`
+ * 这种连写域名（steam 后面紧跟 p，不构成词边界）。而实测 Steam 行的兑换链接正是
+ * `store.steampowered.com/account/registerkey?key=…` —— 域名本身就是最硬的证据。
+ */
+const PLATFORM_DOMAINS: readonly { token: RegExp; platform: Platform }[] = [
+  { token: /(^|\.)fab\.com$|(^|\.)fab\.com\//, platform: 'fab' },
+  { token: /(^|\.)epicgames\.(com|dev)/, platform: 'epic' },
+  { token: /(^|\.)steampowered\.com|(^|\.)steamcommunity\.com/, platform: 'steam' },
+  { token: /(^|\.)unity\.com|(^|\.)unity3d\.com/, platform: 'unity' },
+  { token: /(^|\.)gog\.com/, platform: 'gog' },
+]
+
+/**
+ * 逐行判平台：按**证据强度**逐层回退，每一层都只看「这一行」自己的东西。
+ *
+ * DOM 实测（68 单真跑）得出的覆盖情况：
+ *   层 1 **链接域名**：Steam 行给的是 `store.steampowered.com/...registerkey`，域名即证据；
+ *   层 2 **兑换文章 slug**：`…-How-to-Redeem-on-Epic-Games` → epic。最权威，但**经常缺席**
+ *        —— 实测大量链接只有数字 ID（`/hc/en-us/articles/14325363915931`）；
+ *   层 3 **资产显示名**：实测那 40 行的 FAB 包里 **39 行连兑换链接都没有**，
+ *        名字里写着 "(FAB Professional License Key)" —— 名字是唯一线索。
+ *
+ * ⚠️ 层 3 有误判风险（资产名里可能出现别家平台的词）。实测那批名字都带
+ * 「(FAB … License Key)」这种明确后缀，所以收益远大于风险；但这是**已知的取舍**，
+ * 不是无代价的：认不准时宁可 unknown，也不要为了「填满」而猜。
+ */
+export function resolvePlatform(evidence: {
+  name?: string | null
+  redemptionUrl?: string | null
+}): Platform {
+  const url = (evidence.redemptionUrl ?? '').trim().toLowerCase()
+
+  for (const { token, platform } of PLATFORM_DOMAINS) {
+    if (token.test(url)) return platform
+  }
+
+  const fromArticle = parsePlatform(url)
+  if (fromArticle !== 'unknown') return fromArticle
+
+  return parsePlatform(evidence.name)
+}
+
+/**
  * agent 在「这一行没有兑换链接」时该交的明确标记。
  *
  * 实测：页面本身就不带平台信息的订单很多（第三方 key 行只有名字+码）。
@@ -149,8 +194,8 @@ export function buildPageOrder(read: PageOrderRead): SyncedOrder {
     name: key.name,
     // key_type 留空：页面不提供机器名，硬编一个假的是在制造假数据。
     keyType: null,
-    // 平台逐条从那一行的链接解析（不信任调用方自报的平台名）。
-    platform: parsePlatform(key.redemptionUrl),
+    // 平台逐条判：链接域名 → 文章 slug → 资产名（逐层回退，见 resolvePlatform）。
+    platform: resolvePlatform({ name: key.name, redemptionUrl: key.redemptionUrl }),
     revealStatus: key.revealed ? 'revealed' : 'unrevealed',
     revealedAt: null,
     redeemStatus: 'not_redeemed',
