@@ -9,7 +9,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, type BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { snapshotPageAx } from '../browser/ax-snapshot'
 import type { AxRef } from '../browser/ax-tree'
 import {
@@ -36,6 +36,7 @@ import { evaluateScript } from '../browser/script'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
 import { runRedeem, runReveal } from '../ipc/tasks'
+import { chooseCurrentPage } from './current-page'
 import type { BrowserActionResult, SnapshotResult } from './host-contract'
 import type { LedgerRow, LedgerStats, McpHost, UpsertResult } from './tools'
 
@@ -304,20 +305,21 @@ export function createMcpHost(): McpHost {
     // —————————————————————— 当前页面（不再有 pageId） ——————————————————————
     async browserCurrentPage() {
       // 页面由 App 的界面打开；agent 只操作「当前那一个」。
-      // 优先用显式选中的，其次用唯一/最近的那一个——都不满足就如实报错。
       const pages = listPages()
       if (pages.length === 0) {
         throw new Error(
           '当前没有打开任何 MonoSpace 页面；请先在 App 界面里打开（登录 / 同步等入口）。',
         )
       }
-      const selectedId = getSelectedPageId()
-      const selected = pages.find((page) => page.pageId === selectedId)
-      if (selected) return selected
-      if (pages.length === 1) return pages[0] as (typeof pages)[number]
-      throw new Error(
-        `打开了 ${pages.length} 个页面（${pages.map((page) => page.pageId).join(', ')}），请先在 App 界面里选定要操作的那一个。`,
-      )
+      const focused = BrowserWindow.getFocusedWindow()
+      const chosen = chooseCurrentPage(pages, {
+        selectedId: getSelectedPageId(),
+        ...(focused ? { focusedId: focused.id } : {}),
+      })
+      if (!chosen) {
+        throw new Error('没能确定要操作哪个 MonoSpace 页面；请把目标窗口点到最前面。')
+      }
+      return chosen
     },
 
     // —————————————————————— 操作（act） ——————————————————————
