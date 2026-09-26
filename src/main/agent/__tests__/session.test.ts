@@ -82,4 +82,9 @@ describe('createEmbeddedAgent', () => {
     expect(SYSTEM_PROMPT).toContain('当前打开的那个页面')
     expect(SYSTEM_PROMPT).toContain('不可逆')
   })
+
+  it('系统提示词明确要求零英文（实测会漏句子，所以写死这条约束）', () => {
+    expect(SYSTEM_PROMPT).toContain('一个英文词都不要出现')
+    expect(SYSTEM_PROMPT).toContain('不要把思考过程或计划念出来')
+  })
 })

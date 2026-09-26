@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildRevealProbeScript,
+  decideProbeFallback,
   extractKeyCode,
   isRevealPlaceholder,
   parseProbeResult,
@@ -107,5 +108,39 @@ describe('探测脚本与回执收敛', () => {
   it('非数组一律当空（页面可能返回任何东西）', () => {
     expect(parseProbeResult(undefined)).toEqual([])
     expect(parseProbeResult({})).toEqual([])
+  })
+})
+
+describe('decideProbeFallback：接口只核对，取码必须走页面', () => {
+  it('接口说已揭示、页面却没码 → 交人工，且**绝不把接口的码当答案**', () => {
+    const result = decideProbeFallback({ crossCheck: 'revealed' })
+    expect(result.kind).toBe('unavailable')
+    if (result.kind === 'unavailable') {
+      expect(result.pause).toBe('unknown-page')
+      expect(result.detail).toContain('页面上没读到密钥')
+    }
+    // 结构性保证：判定结果里根本不可能出现形如密钥的串
+    expect(JSON.stringify(result)).not.toMatch(/[A-Z0-9]{4,}-[A-Z0-9]{4,}/)
+  })
+
+  it('接口说订单里没这条 key → 交人工（这是「查缺口」的用法）', () => {
+    const result = decideProbeFallback({ crossCheck: 'missing' })
+    expect(result).toMatchObject({ kind: 'unavailable', pause: 'unavailable' })
+  })
+
+  it('接口说未揭示、页面又没控件 → 交人工，不猜着点（不可逆）', () => {
+    const result = decideProbeFallback({ crossCheck: 'unrevealed' })
+    expect(result.kind).toBe('unavailable')
+    if (result.kind === 'unavailable') expect(result.detail).toContain('定位不到揭示控件')
+  })
+
+  it('接口核对报错 → 交人工并把原因带出来', () => {
+    const result = decideProbeFallback({ crossCheck: 'error', errorDetail: 'HTTP 500' })
+    expect(result).toMatchObject({ kind: 'unavailable', detail: 'HTTP 500' })
+  })
+
+  it('没接接口（crossCheck=null）→ 纯靠页面，交人工', () => {
+    const result = decideProbeFallback({ crossCheck: null })
+    expect(result).toMatchObject({ kind: 'unavailable', pause: 'unknown-page' })
   })
 })

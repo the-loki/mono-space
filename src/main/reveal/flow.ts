@@ -3,7 +3,7 @@
  *
  * 揭示是**不可逆写操作**（POST /humbler/redeemkey 会分配并占用 key），所以：
  * 1. **确定性预检**：只读判断会话/条目是否可揭示；
- * 2. **单条试探**：写之前先只读确认「确实还没揭示」（`redeemed_key_val` 为空）；
+ * 2. **单条试探**：写之前先只读确认「确实还没揭示」（页面状态 + 接口核对，接口不提供码）；
  * 3. **恢复即重快照，不重放**：暂停后恢复时重新跑预检+试探，Humble 侧已有 key 就直接算成功，
  *    绝不把上次可能已落地的 POST 再打一次。
  *
@@ -41,7 +41,10 @@ export interface RevealPorts {
   probe(input: RevealInput): Promise<ProbeResult>
   /** 真正的不可逆写操作；返回**已解析**的结果。 */
   submit(input: RevealInput): Promise<RevealOutcome>
-  /** 2xx 但没带 key 时的只读补偿：重新 GET 订单读 `redeemed_key_val`。 */
+  /**
+   * 2xx 但没带 key 时的只读补偿：**重读页面**（不用接口——码只能来自页面）。
+   * 读不到就返回 null，由 flow 判为交人工。
+   */
   reRead(input: RevealInput): Promise<string | null>
   record(input: {
     keyId: number

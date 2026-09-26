@@ -1,14 +1,15 @@
 /**
- * `RevealPorts` 的真实实现（`#27` 用户决策：**默认走浏览器，接口兜底**）。
+ * `RevealPorts` 的真实实现。**码只能来自页面**（用户硬性约束，多次强调）。
  *
- * 与上一版的区别：不再用扩展在页面里 `fetch` 发 `POST /humbler/redeemkey`，
- * 而是**像真人一样点页面上的揭示控件**（CDP 真实输入事件）——页面自己会发那个请求。
- * 好处：页面结构/风控怎么变，我们跟着页面走；也不再需要维护一个扩展。
+ * 取码途径**唯一**：像真人一样点页面上的揭示控件（CDP 真实输入事件），然后从页面读码。
+ * 页面结构/风控怎么变，我们跟着页面走；也不需要维护扩展。
  *
- * 分工：
- * - **浏览器**（默认）：定位控件、点击、从页面读码。
- * - **接口**（兜底）：页面读不到码时用 `GET /api/v1/order/<gamekey>` 的
- *   `redeemed_key_val`（只读 GET，不受 Cloudflare 阻挡）。
+ * 接口只做两件事，且**都不带码**（见 `CrossCheckState`）：
+ * - **核对**：这条 key 在 Humble 侧是否已揭示；
+ * - **查缺口**：订单里到底有没有这条 key。
+ *
+ * 接口即使带着 `redeemed_key_val`，也**不准**把它当答案：接口说已揭示而页面读不到码时，
+ * 按「页面结构可能变了」交人工（`decideProbeFallback`），而不是把接口的码抄进台账。
  *
  * 安全取向：**定位不到控件就交人工，绝不猜着点**（不可逆操作宁可失败）。
  */
@@ -22,6 +23,8 @@ import type { PrecheckResult, ProbeResult, RevealInput, RevealPorts } from './fl
 import { readRevealedKey } from './outcome'
 import {
   buildRevealProbeScript,
+  type CrossCheckState,
+  decideProbeFallback,
   extractKeyCode,
   isRevealPlaceholder,
   parseProbeResult,
@@ -33,7 +36,7 @@ import {
 export interface RevealDriverOptions {
   window: BrowserWindow
   repository: LedgerRepository
-  /** 接口兜底用的只读客户端（可选；没有就纯靠页面）。 */
+  /** 只读客户端：仅用于**核对/查缺口**，不用于取码（可选；没有就纯靠页面）。 */
   client?: HumbleClient
   /** 点击后轮询等码的时间。默认 15s。 */
   waitMs?: number
@@ -68,21 +71,23 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
   const { window, repository, client } = options
   const waitMs = options.waitMs ?? 15_000
 
-  /** 接口兜底：读这条 key 当前是否已揭示（只读 GET）。 */
-  async function readViaApi(
+  /**
+   * 接口**核对 + 查缺口**：只判状态，**永不返回码**。
+   *
+   * `readRevealedKey(tpk)` 在这里只被当布尔用（有没有值 = 是否已揭示），它的返回值不会被带出去。
+   */
+  async function crossCheckViaApi(
     input: RevealInput,
-  ): Promise<
-    { kind: 'ok'; code: string | null; found: boolean } | { kind: 'error'; detail: string }
-  > {
-    if (!client) return { kind: 'ok', code: null, found: false }
+  ): Promise<{ state: CrossCheckState; detail?: string } | null> {
+    if (!client) return null
     try {
       const order = await client.fetchOrder(input.gamekey)
       const tpk = findTpk(order, input)
-      if (!tpk) return { kind: 'ok', code: null, found: false }
-      return { kind: 'ok', code: readRevealedKey(tpk), found: true }
+      if (!tpk) return { state: 'missing' }
+      return { state: readRevealedKey(tpk) ? 'revealed' : 'unrevealed' }
     } catch (error) {
       const detail = error instanceof HumbleError ? error.message : String(error)
-      return { kind: 'error', detail }
+      return { state: 'error', detail }
     }
   }
 
@@ -148,25 +153,12 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
         if (state === 'needs-reveal') return { kind: 'needs-reveal' }
       }
 
-      // 页面给不出结论 → 接口兜底（只读，用于判断「是否已揭示」）
-      const api = await readViaApi(input)
-      if (api.kind === 'error') {
-        return { kind: 'unavailable', detail: api.detail, pause: 'unknown-page' }
-      }
-      if (api.code) return { kind: 'already-revealed', code: api.code }
-      if (!api.found) {
-        return {
-          kind: 'unavailable',
-          detail: '订单详情里找不到这条 key（keytype/keyindex 可能已变）',
-          pause: 'unavailable',
-        }
-      }
-      // 接口确认还没揭示，但页面上定位不到控件 → 不猜着点，交人工
-      return {
-        kind: 'unavailable',
-        detail: '接口确认未揭示，但页面上定位不到揭示控件（结构可能已变，需人工校准）',
-        pause: 'unknown-page',
-      }
+      // 页面给不出结论 → 只让接口**核对**，码仍然只能来自页面。
+      const cross = await crossCheckViaApi(input)
+      return decideProbeFallback({
+        crossCheck: cross?.state ?? null,
+        errorDetail: cross?.detail,
+      })
     },
 
     async submit(input: RevealInput) {
@@ -199,13 +191,23 @@ export function createRevealPorts(options: RevealDriverOptions): RevealPorts {
         if (after) break
       }
 
-      // 页面没给出码 → 交给 flow 的 reRead（只读接口补偿），**不重放点击**
+      // 页面没给出码 → 交给 flow 的 reRead（**重读页面**，不用接口），**不重放点击**
       return { kind: 'no-key-in-response', message: '点击后页面上没有读到密钥' }
     },
 
+    /**
+     * 重读**页面**（不用接口）：点击后页面没立刻显示码时，再读一次确认。只读，不重放点击。
+     * 页面读不到就返回 null → flow 判为交人工（宁可承认不知道，也不从接口抄码）。
+     */
     async reRead(input: RevealInput): Promise<string | null> {
-      const api = await readViaApi(input)
-      return api.kind === 'ok' ? api.code : null
+      const candidates = await probePage(window)
+      const candidate = pickRevealCandidate(candidates, {
+        name: input.keytype,
+        keytype: input.keytype,
+        keyindex: input.keyindex,
+      })
+      if (!candidate) return null
+      return extractKeyCode(candidate.controlText) ?? extractKeyCode(candidate.rowText)
     },
 
     async record({ keyId, code, status }) {

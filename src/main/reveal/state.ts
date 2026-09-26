@@ -92,7 +92,7 @@ export function reduceReveal(state: RevealMachineState, event: RevealEvent): Rev
       return state.state === 'probing' ? go('probing', '需要揭示（尚未写入）') : stay()
 
     case 'probeAlreadyRevealed':
-      // 幂等：Humble 侧已有 redeemed_key_val → 不重放写操作，直接算已揭示。
+      // 幂等：Humble 侧已揭示 → 不重放写操作，直接算已揭示（码来自页面，不来自接口）。
       return state.state === 'probing' || state.state === 'revealing'
         ? // 注意：note 可能被写进日志/UI，**不放 key 明文**（脱敏要求）。
           go('revealed', '订单里已有 key（幂等，不重写）')

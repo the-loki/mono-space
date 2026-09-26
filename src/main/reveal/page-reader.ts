@@ -1,3 +1,5 @@
+import type { ProbeResult } from './flow'
+
 /**
  * 揭示页面的**纯逻辑**（`#27` 用户决策：默认走浏览器，接口兜底）。
  *
@@ -51,6 +53,65 @@ export interface RevealCandidate {
 export type RevealCellState = 'needs-reveal' | 'revealed' | 'unknown'
 
 /** 文案是否是「还没揭示」的占位（实测「显示您的 … 密钥」）。 */
+/**
+ * 接口**核对**的结论（用户硬性约束：接口只用于核对/查缺口）。
+ *
+ * ⚠️ 这个类型里**没有码**——不是遗漏，是设计要求。接口即使带着 `redeemed_key_val`，
+ * 也只允许拿来判「是否已揭示」，取码必须走页面。
+ */
+export type CrossCheckState = 'revealed' | 'unrevealed' | 'missing' | 'error'
+
+export interface ProbeFallbackInput {
+  /** 接口核对结论；没接接口时给 null（纯靠页面）。 */
+  crossCheck: CrossCheckState | null
+  /** 接口报错时的原因。 */
+  errorDetail?: string
+}
+
+/**
+ * 页面给不出结论时的判定。
+ *
+ * 最要紧的一条：接口说「已揭示」而页面读不到码时，**返回交人工，绝不把接口的码当答案**。
+ * 否则接口就成了取码途径，违反「码只能来自页面」。
+ */
+export function decideProbeFallback(input: ProbeFallbackInput): ProbeResult {
+  const { crossCheck, errorDetail } = input
+
+  if (crossCheck === 'error') {
+    return {
+      kind: 'unavailable',
+      detail: errorDetail ?? '接口核对失败',
+      pause: 'unknown-page',
+    }
+  }
+  if (crossCheck === 'revealed') {
+    return {
+      kind: 'unavailable',
+      detail: '接口核对显示该 key 已揭示，但页面上没读到密钥（页面结构可能已变，需人工校准）',
+      pause: 'unknown-page',
+    }
+  }
+  if (crossCheck === 'missing') {
+    return {
+      kind: 'unavailable',
+      detail: '订单详情里找不到这条 key（keytype/keyindex 可能已变）',
+      pause: 'unavailable',
+    }
+  }
+  if (crossCheck === 'unrevealed') {
+    return {
+      kind: 'unavailable',
+      detail: '接口核对确认未揭示，但页面上定位不到揭示控件（结构可能已变，需人工校准）',
+      pause: 'unknown-page',
+    }
+  }
+  return {
+    kind: 'unavailable',
+    detail: '页面上定位不到揭示控件（可能未登录或页面结构已变）',
+    pause: 'unknown-page',
+  }
+}
+
 export function isRevealPlaceholder(text: string): boolean {
   return PLACEHOLDER.test(text ?? '')
 }
