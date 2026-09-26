@@ -189,12 +189,13 @@ describe('平台逐条判断（用户明确：同一订单页可能混多个平�
     expect(keys[1]?.platform).toBe('steam')
   })
 
-  it('明确给了 platform 就以它为准（不看链接）', () => {
+  it('只认链接：不采信调用方自报的平台名（输出 schema 内置在应用侧）', () => {
     const order = buildPageOrder({
       orderGamekey: 'g',
+      // @ts-expect-error 故意多给一个 platform：它必须被忽略，平台只从链接来
       keys: [{ name: 'X', revealed: true, code: 'A', platform: 'fab', redemptionUrl: STEAM }],
     })
-    expect(order.bundles[0]?.keys[0]?.platform).toBe('fab')
+    expect(order.bundles[0]?.keys[0]?.platform).toBe('steam')
   })
 
   it('没给链接也没给平台 → unknown（不默认成某个平台）', () => {

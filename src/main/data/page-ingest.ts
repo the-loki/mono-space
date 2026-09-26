@@ -62,10 +62,12 @@ export interface PageKeyRead {
   revealed: boolean
   /** 已揭示时从页面读到的密钥明文；未揭示必须为空。 */
   code?: string | null
-  /** 这一行「Redemption Instructions」链接（或文章名）；平台由它解析得到。 */
+  /**
+   * 这一行「Redemption Instructions」链接（或文章名）。**必填**（工具层强制）。
+   *
+   * 平台由应用从这里解析 —— 输出 schema 内置在应用侧，调用方只交原始证据。
+   */
   redemptionUrl?: string | null
-  /** 已知平台时可直接给；给了就以它为准。 */
-  platform?: string | null
 }
 
 /** agent 在页面上读到的一整单。 */
@@ -137,8 +139,8 @@ export function buildPageOrder(read: PageOrderRead): SyncedOrder {
     name: key.name,
     // key_type 留空：页面不提供机器名，硬编一个假的是在制造假数据。
     keyType: null,
-    // 平台逐条解析：优先用 agent 给的，否则从那一行的 Redemption Instructions 链接里解。
-    platform: key.platform ? parsePlatform(key.platform) : parsePlatform(key.redemptionUrl),
+    // 平台逐条从那一行的链接解析（不信任调用方自报的平台名）。
+    platform: parsePlatform(key.redemptionUrl),
     revealStatus: key.revealed ? 'revealed' : 'unrevealed',
     revealedAt: null,
     redeemStatus: 'not_redeemed',

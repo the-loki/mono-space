@@ -29,7 +29,8 @@ export const SYSTEM_PROMPT = `你是 MonoSpace 内置的助手。MonoSpace 是�
 
   1) monospace_page_open 打开某单的订单页（https://www.humblebundle.com/downloads?key=<gamekey>）
   2) monospace_dom 看清页面（必要时 monospace_script）
-  3) 逐条读出：资产显示名 + 是否已揭示（已揭示连密钥一起读）
+  3) 逐条读出：资产显示名 + 是否已揭示（已揭示连密钥一起读）+ **每一行自己的
+     「Redemption Instructions」链接**（这一项必填，平台由应用从它解析）
   4) monospace_keys_ingest 写回台账
 
 **只写你真的在页面上看到的**：未揭示的不要给 code；已揭示但没读到码就留空并重读，不要编。

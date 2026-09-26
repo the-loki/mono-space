@@ -372,3 +372,16 @@ describe('页面读取落库 keys_ingest（ADR-0003 的唯一落库入口）', (
     expect(createTools(fakeHost()).map((t) => t.name)).toContain(`${TOOL_PREFIX}keys_ingest`)
   })
 })
+
+describe('keys_ingest 的输出 schema 内置在应用侧，且平台证据必填', () => {
+  it('每条 key 的 redemptionUrl 是 required（agent 不能省略，也不用自己判平台）', () => {
+    const spec = createTools(fakeHost()).find((tool) => tool.name === `${TOOL_PREFIX}keys_ingest`)
+    const parameters = spec?.parameters as unknown as {
+      properties: { keys: { items: { required?: string[]; properties?: Record<string, unknown> } } }
+    }
+    const keys = parameters.properties.keys.items
+    expect(keys.required).toContain('redemptionUrl')
+    // platform 不再作为入参：平台由应用从链接解析（不信调用方自报）。
+    expect(Object.keys(keys.properties ?? {})).not.toContain('platform')
+  })
+})
