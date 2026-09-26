@@ -229,7 +229,9 @@ function createDomainTools(host: McpHost): ToolSpec[] {
           {
             description:
               '这一单在页面上看到的所有 key。**平台逐条判断**：同一订单页可能混着多个平台，' +
-              '所以每条 key 要各自带它那一行的 redemptionUrl（或已知的 platform）。',
+              '所以每条 key 要各自带它那一行的 redemptionUrl。' +
+              '**页面上没有 key 的订单**（音乐 / 电子书下载包之类）也要调用本工具：' +
+              '给出 productName、keys 传空数组 —— 否则台账记不住这单是什么，界面只能显示「未读取」。',
           },
         ),
       }),

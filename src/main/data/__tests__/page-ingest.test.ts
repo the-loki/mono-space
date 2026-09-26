@@ -236,3 +236,18 @@ describe('平台解析的诚实性（实测教训）', () => {
     expect(parsePlatform('https://www.gamedevmarket.net/')).toBe('unknown')
   })
 })
+
+describe('没有 key 的订单也要记得住（音乐 / 电子书下载包之类）', () => {
+  it('空 keys 仍写出订单名，但不建空资产包', () => {
+    const order = buildPageOrder({ orderGamekey: 'gk1', productName: '某音乐包', keys: [] })
+    expect(order.productName).toBe('某音乐包')
+    expect(order.bundles).toEqual([])
+  })
+
+  it('空 keys 且没给名字时，订单仍带着 gamekey 存在（不崩、不编名字）', () => {
+    const order = buildPageOrder({ orderGamekey: 'gk2', keys: [] })
+    expect(order.remoteId).toBe('gk2')
+    expect(order.productName).toBeNull()
+    expect(order.bundles).toEqual([])
+  })
+})

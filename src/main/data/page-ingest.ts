@@ -159,19 +159,26 @@ export function buildPageOrder(read: PageOrderRead): SyncedOrder {
     redeemCode: key.revealed ? key.code?.trim() || null : null,
   }))
 
-  const bundle: SyncedBundle = {
-    remoteId: pageBundleRemoteId(read),
-    name: read.bundleName?.trim() || null,
-    // 页面看不出发行商，留着；不猜。
-    publisher: null,
-    keys,
-  }
+  // 页面**没有 key** 的订单（音乐 / 电子书下载包之类）也要落库 —— 我们其实知道它是什么，
+  // 不写的话界面只能永远显示「未读取」。但没有 key 就不建空资产包，免得台账里多出无意义的空包。
+  const bundles: SyncedBundle[] =
+    read.keys.length === 0
+      ? []
+      : [
+          {
+            remoteId: pageBundleRemoteId(read),
+            name: read.bundleName?.trim() || null,
+            // 页面看不出发行商，留着；不猜。
+            publisher: null,
+            keys,
+          },
+        ]
 
   return {
     remoteId: read.orderGamekey.trim(),
     productName: read.productName?.trim() || null,
     purchasedAt: null,
     currency: null,
-    bundles: [bundle],
+    bundles,
   }
 }
