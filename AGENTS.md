@@ -23,3 +23,7 @@ All coding tasks load the `ponytail` skill.
 ### TDD
 
 All coding tasks follow TDD.
+
+## Code style
+
+Avoid large files and functions; split by responsibility.
