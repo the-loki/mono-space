@@ -11,3 +11,15 @@ The five canonical triage labels, each string equal to its role name. See `docs/
 ### Domain docs
 
 Single-context: one `CONTEXT.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Communication
+
+Chat replies use Chinese (简体中文).
+
+### Ponytail
+
+All coding tasks load the `ponytail` skill.
+
+### TDD
+
+All coding tasks follow TDD.
