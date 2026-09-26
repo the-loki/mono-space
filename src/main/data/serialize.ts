@@ -6,9 +6,12 @@
  * 本模块为纯函数，不依赖数据库与 electron。
  */
 import {
+  LEDGER_EXPORT_KEY_COLUMNS,
   LEDGER_EXPORT_VERSION,
   type LedgerExport,
   type LedgerExportRow,
+  PLATFORMS,
+  type Platform,
   REDEEM_STATUSES,
   REVEAL_STATUSES,
   type RedeemStatus,
@@ -18,8 +21,8 @@ import {
   type SyncedOrder,
 } from './types'
 
-/** CSV 列顺序（同时作为表头）。 */
-export const CSV_COLUMNS: readonly (keyof LedgerExportRow)[] = [
+/** 归属列（历史顺序，前缀不变）。 */
+const LEDGER_OWNER_COLUMNS = [
   'accountId',
   'orderRemoteId',
   'orderProductName',
@@ -28,15 +31,29 @@ export const CSV_COLUMNS: readonly (keyof LedgerExportRow)[] = [
   'bundleRemoteId',
   'bundleName',
   'publisher',
-  'keyRemoteId',
-  'keyName',
-  'keyType',
-  'revealStatus',
-  'revealedAt',
-  'redeemStatus',
-  'redeemedAt',
-  'redeemCode',
-]
+] as const
+
+/**
+ * CSV 列顺序（同时作为表头）。
+ *
+ * 归属列固定不变；key 列从唯一映射表 `LEDGER_EXPORT_KEY_COLUMNS` 派生，不在这里重述。
+ * 不用 `readonly (keyof LedgerExportRow)[]` 注解：那会把元素类型宽到全 union，
+ * 下面的完整性闸门就永远看不到「漏了哪一列」。
+ */
+export const CSV_COLUMNS = [
+  ...LEDGER_OWNER_COLUMNS,
+  ...Object.values(LEDGER_EXPORT_KEY_COLUMNS),
+] as const satisfies readonly (keyof LedgerExportRow)[]
+
+/** 可以缺席的 CSV 列：老导出文件没有 platform，缺了按 unknown 处理，不算格式错误。 */
+const CSV_OPTIONAL_COLUMNS: readonly (keyof LedgerExportRow)[] = ['platform']
+
+// 编译期闸门：导出行加了字段却忘了列进 CSV_COLUMNS 时，`Exclude` 不为 `never`，
+// 下面这行赋值不成立 → 编译报错（而不是导出时静默少一列）。
+type MissingCsvColumn = Exclude<keyof LedgerExportRow, (typeof CSV_COLUMNS)[number]>
+const _csvColumnsCoverExportRow: MissingCsvColumn extends never
+  ? true
+  : ['CSV 缺少列', MissingCsvColumn] = true
 
 /** 把嵌套订单展平成导出行。 */
 export function ordersToRows(orders: readonly SyncedOrder[], accountId: string): LedgerExportRow[] {
@@ -61,6 +78,7 @@ export function ordersToRows(orders: readonly SyncedOrder[], accountId: string):
           redeemStatus: key.redeemStatus ?? 'not_redeemed',
           redeemedAt: key.redeemedAt ?? null,
           redeemCode: key.redeemCode ?? null,
+          platform: key.platform ?? 'unknown',
         })
       }
     }
@@ -107,6 +125,7 @@ export function rowsToOrders(rows: readonly LedgerExportRow[]): SyncedOrder[] {
         redeemStatus: row.redeemStatus,
         redeemedAt: row.redeemedAt,
         redeemCode: row.redeemCode,
+        platform: row.platform,
       }
       bundle.keys.push(key)
     }
@@ -155,6 +174,10 @@ export function parseLedgerCsv(text: string): SyncedOrder[] {
   }
   const header = table[0] as string[]
   for (const column of CSV_COLUMNS) {
+    // 老文件没有 platform 列，缺了按 unknown 走（见 CSV_OPTIONAL_COLUMNS）。
+    if (CSV_OPTIONAL_COLUMNS.includes(column)) {
+      continue
+    }
     if (!header.includes(column)) {
       throw new Error(`CSV 缺少列：${column}`)
     }
@@ -180,6 +203,7 @@ export function parseLedgerCsv(text: string): SyncedOrder[] {
       redeemStatus: toRedeemStatus(record.get('redeemStatus')),
       redeemedAt: emptyToNull(record.get('redeemedAt')),
       redeemCode: emptyToNull(record.get('redeemCode')),
+      platform: toPlatform(record.get('platform')),
     })
   }
   // 丢弃缺少关键归属信息的行。
@@ -211,6 +235,7 @@ function normalizeOrder(order: SyncedOrder): SyncedOrder {
                 redeemStatus: toRedeemStatus(key.redeemStatus ?? undefined),
                 redeemedAt: key.redeemedAt ?? null,
                 redeemCode: key.redeemCode ?? null,
+                platform: toPlatform(key.platform ?? undefined),
               }))
             : [],
         }))
@@ -304,4 +329,12 @@ function toRedeemStatus(value: RedeemStatus | string | undefined): RedeemStatus 
     return value as RedeemStatus
   }
   return 'not_redeemed'
+}
+
+/** 平台归一：认不出的值（含老文件缺列）一律 `unknown`，不报错也不猜。 */
+function toPlatform(value: Platform | string | undefined): Platform {
+  if (value && (PLATFORMS as readonly string[]).includes(value)) {
+    return value as Platform
+  }
+  return 'unknown'
 }

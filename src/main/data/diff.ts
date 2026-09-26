@@ -41,6 +41,10 @@ function normalizeKey(key: SyncedKey): Record<string, unknown> {
     remoteId: key.remoteId,
     name: key.name ?? null,
     keyType: key.keyType ?? null,
+    // 平台是 key 的内容：不纳入就看不出「平台改了」的订单变化。
+    // 后果：老快照的指纹会变一次，下次同步同一份内容被当成「变了」多写一份快照。
+    // 不丢数据（快照只增不改），换指纹完整，值得。
+    platform: key.platform ?? null,
     revealStatus: key.revealStatus ?? null,
     revealedAt: key.revealedAt ?? null,
     redeemStatus: key.redeemStatus ?? null,

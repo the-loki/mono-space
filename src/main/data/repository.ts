@@ -8,7 +8,7 @@ import {
   DatabaseSync,
   type SQLInputValue,
   type SQLOutputValue,
-  type StatementSync,
+  type StatementResultingChanges,
 } from 'node:sqlite'
 import { canonicalJson, fingerprintOrders } from './diff'
 import { migrate } from './migrate'
@@ -99,11 +99,22 @@ interface FilterClause {
   params: SQLInputValue[]
 }
 
+/**
+ * 带闸门的语句句柄：`stmt(sql)` 返回它，执行前先核对占位符与实参数量。
+ *
+ * 所有执行都从 `stmt` 走，所以没有「某条语句绕过闸门」的路径；prepared 语句仍按 SQL 缓存。
+ */
+interface GatedStatement {
+  run(...params: SQLInputValue[]): StatementResultingChanges
+  get(...params: SQLInputValue[]): Record<string, SQLOutputValue> | undefined
+  all(...params: SQLInputValue[]): Record<string, SQLOutputValue>[]
+}
+
 /** 台账仓储。 */
 export class LedgerRepository {
   private readonly db: DatabaseSync
   private readonly accountId: string
-  private readonly statements = new Map<string, StatementSync>()
+  private readonly statements = new Map<string, GatedStatement>()
   private closed = false
 
   private constructor(db: DatabaseSync, accountId: string) {
@@ -565,10 +576,24 @@ export class LedgerRepository {
     return { where: conditions.join(' AND '), params }
   }
 
-  private stmt(sql: string): StatementSync {
+  private stmt(sql: string): GatedStatement {
     let statement = this.statements.get(sql)
     if (!statement) {
-      statement = this.db.prepare(sql)
+      const prepared = this.db.prepare(sql)
+      statement = {
+        run: (...params) => {
+          assertStatementArity(sql, params)
+          return prepared.run(...params)
+        },
+        get: (...params) => {
+          assertStatementArity(sql, params)
+          return prepared.get(...params)
+        },
+        all: (...params) => {
+          assertStatementArity(sql, params)
+          return prepared.all(...params)
+        },
+      }
       this.statements.set(sql, statement)
     }
     return statement
@@ -698,6 +723,28 @@ function normalizeOffset(value: number | undefined): number {
 /** 把 undefined 归一成 null，供 SQL 绑定。 */
 function nullable(value: string | null | undefined): string | null {
   return value ?? null
+}
+
+/**
+ * 语句与实参一致性闸门：占位符个数必须等于实参个数，否则当场显式抛错。
+ *
+ * 存在的理由：node:sqlite 在「实参少于占位符」时**不报错**，缺的绑成 NULL；
+ * `UPDATE keys … WHERE id = ?` 少传一个实参就变成 `WHERE id = NULL` 的空操作，
+ * 静默不更新（就是「重读一单什么都不更新」那类 bug）。数量不符必须炸出来。
+ *
+ * 前提假设：本文件的 SQL 里没有含 `?` 的字符串字面量，所以直接数 `?` 即可。
+ */
+export function assertStatementArity(sql: string, params: readonly unknown[]): void {
+  const placeholders = (sql.match(/\?/g) ?? []).length
+  if (placeholders === params.length) {
+    return
+  }
+  const delta = params.length - placeholders
+  throw new Error(
+    `SQL 占位符与实参数量不一致：占位符 ${placeholders} 个，实参 ${params.length} 个` +
+      `（差 ${Math.abs(delta)} 个，${delta < 0 ? '实参不足' : '实参多余'}）。` +
+      `语句：${sql.replace(/\s+/g, ' ').trim()}`,
+  )
 }
 
 /** 把 SQL 输出值安全转成字符串。 */

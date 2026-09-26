@@ -222,8 +222,8 @@ export interface LedgerExport {
   orders: SyncedOrder[]
 }
 
-/** 展开成扁平行的导出记录，CSV 与 JSON 共用同一行模型。 */
-export interface LedgerExportRow {
+/** 导出行里订单 / 资产包侧的字段（不属于 key 自身）。 */
+interface LedgerExportOwnerFields {
   accountId: string
   orderRemoteId: string
   orderProductName: string | null
@@ -232,12 +232,43 @@ export interface LedgerExportRow {
   bundleRemoteId: string
   bundleName: string | null
   publisher: string | null
-  keyRemoteId: string
-  keyName: string | null
-  keyType: string | null
-  revealStatus: RevealStatus
-  revealedAt: string | null
-  redeemStatus: RedeemStatus
-  redeemedAt: string | null
-  redeemCode: string | null
+}
+
+/**
+ * `KeyDetail` 里属于 key 自身、要出现在导出里的字段名。
+ *
+ * 由 `KeyDetail` 扣掉归属字段与库内数字 id 得到，所以往 `KeyListItem` 加字段时
+ * 这个集合会跟着变大 —— 下面的列名映射若没登记，`satisfies` 直接编译不过。
+ */
+type LedgerKeyFieldName = Exclude<
+  keyof KeyDetail,
+  keyof LedgerExportOwnerFields | 'id' | 'orderId' | 'bundleId'
+>
+
+/**
+ * key 字段 → 导出列名的唯一映射表：导出带哪些 key 字段只此一处定义。
+ *
+ * 列名沿用历史导出格式（只有 `name → keyName` 一处改名），老文件按列名仍能读回。
+ * `platform` 放末尾：CSV 按列名解析、与位置无关，但放末尾对老文件最保守。
+ */
+export const LEDGER_EXPORT_KEY_COLUMNS = {
+  keyRemoteId: 'keyRemoteId',
+  name: 'keyName',
+  keyType: 'keyType',
+  revealStatus: 'revealStatus',
+  revealedAt: 'revealedAt',
+  redeemStatus: 'redeemStatus',
+  redeemedAt: 'redeemedAt',
+  redeemCode: 'redeemCode',
+  platform: 'platform',
+} as const satisfies Record<LedgerKeyFieldName, string>
+
+/**
+ * 展开成扁平行的导出记录，CSV 与 JSON 共用同一行模型。
+ *
+ * key 字段由 `KeyDetail` + `LEDGER_EXPORT_KEY_COLUMNS` 派生，不再逐字段重述，
+ * 所以漏加字段会在构造导出行的地方暴露成编译错误。
+ */
+export type LedgerExportRow = LedgerExportOwnerFields & {
+  [K in LedgerKeyFieldName as (typeof LEDGER_EXPORT_KEY_COLUMNS)[K]]: KeyDetail[K]
 }

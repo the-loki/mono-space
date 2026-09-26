@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { openLedger } from '../repository'
+import { assertStatementArity, openLedger } from '../repository'
 import type { SyncedOrder } from '../types'
 
 /** 造一条含两个 key 的订单。 */
@@ -202,6 +202,26 @@ describe('订单列表查询（带 key 计数）', () => {
     const [order] = repo.listOrders()
     expect(order).toMatchObject({ keyCount: 3, unrevealedCount: 1, revealedCount: 2 })
     repo.close()
+  })
+})
+
+describe('SQL 占位符 / 实参一致性闸门', () => {
+  it('实参少于占位符时当场抛错，并指出差几个', () => {
+    // 这就是 e925a3f 那类 bug：node:sqlite 对「实参少于占位符」不报错，
+    // 缺的绑成 NULL，语句被静默改写（`WHERE id = NULL` 永不匹配）。闸门必须显式抛。
+    expect(() => assertStatementArity('UPDATE keys SET a = ?, b = ? WHERE id = ?', [1, 2])).toThrow(
+      /占位符 3 个，实参 2 个（差 1 个，实参不足）.*UPDATE keys/s,
+    )
+  })
+
+  it('实参多于占位符时同样抛错', () => {
+    expect(() => assertStatementArity('SELECT ? FROM t', [1, 2])).toThrow(
+      /占位符 1 个，实参 2 个（差 1 个，实参多余）/,
+    )
+  })
+
+  it('数量相等时放行', () => {
+    expect(() => assertStatementArity('SELECT ?, ? FROM t WHERE id = ?', [1, 2, 3])).not.toThrow()
   })
 })
 

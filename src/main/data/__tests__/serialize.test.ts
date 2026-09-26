@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { openLedger } from '../repository'
+import { CSV_COLUMNS } from '../serialize'
 import type { SyncedOrder } from '../types'
 
 /** 造一条带两个订单、含特殊字符与兑换码的数据。 */
@@ -100,6 +101,108 @@ describe('导出 / 导入往返', () => {
     expect(snapshot(target)).toEqual(snapshot(source))
     source.close()
     target.close()
+  })
+
+  describe('平台（platform）往返与老文件兼容', () => {
+    /** 造一条两把 key、各带平台的订单。 */
+    function platformOrders(): SyncedOrder[] {
+      return [
+        {
+          remoteId: 'order-p',
+          productName: '平台订单',
+          bundles: [
+            {
+              remoteId: 'bundle-p',
+              name: '平台包',
+              keys: [
+                { remoteId: 'key-steam', name: 'Steam 资产', platform: 'steam' },
+                { remoteId: 'key-epic', name: 'Epic 资产', platform: 'epic' },
+              ],
+            },
+          ],
+        },
+      ]
+    }
+
+    it('JSON 导出 → 导入后 platform 仍在（永久锁住）', () => {
+      const source = openLedger({ path: ':memory:' })
+      source.applyOrderSync(platformOrders())
+      const json = source.exportJson()
+
+      expect(json).toContain('"platform": "steam"')
+
+      const target = openLedger({ path: ':memory:' })
+      target.importJson(json)
+      const platforms = new Map(
+        target.listKeys().items.map((item) => [item.keyRemoteId, item.platform]),
+      )
+      expect(platforms.get('key-steam')).toBe('steam')
+      expect(platforms.get('key-epic')).toBe('epic')
+      source.close()
+      target.close()
+    })
+
+    it('CSV 导出必须有 platform 列，且能导回', () => {
+      const source = openLedger({ path: ':memory:' })
+      source.applyOrderSync(platformOrders())
+      const csv = source.exportCsv()
+
+      const header = csv.split('\n')[0]?.split(',')
+      expect(header).toContain('platform')
+
+      const target = openLedger({ path: ':memory:' })
+      target.importCsv(csv)
+      const item = target.listKeys().items.find((row) => row.keyRemoteId === 'key-steam')
+      expect(item?.platform).toBe('steam')
+      source.close()
+      target.close()
+    })
+
+    it('platform 追加在 CSV 末尾，不挪动老列的位置', () => {
+      // 老文件按列名解析、与位置无关，但放末尾是改动最小、最保守的做法。
+      expect(CSV_COLUMNS[CSV_COLUMNS.length - 1]).toBe('platform')
+    })
+
+    it('不含 platform 的老 JSON 导出仍能导入，缺省 unknown', () => {
+      const source = openLedger({ path: ':memory:' })
+      source.applyOrderSync(platformOrders())
+      const legacy = JSON.parse(source.exportJson()) as {
+        orders: Array<{ bundles: Array<{ keys: Array<Record<string, unknown>> }> }>
+      }
+      for (const order of legacy.orders) {
+        for (const bundle of order.bundles) {
+          for (const key of bundle.keys) delete key.platform
+        }
+      }
+
+      const target = openLedger({ path: ':memory:' })
+      const result = target.importJson(JSON.stringify(legacy))
+
+      expect(result.keys.inserted).toBe(2)
+      expect(target.listKeys().items.every((item) => item.platform === 'unknown')).toBe(true)
+      source.close()
+      target.close()
+    })
+
+    it('不含 platform 的老 CSV 导出仍能导入，缺省 unknown', () => {
+      const source = openLedger({ path: ':memory:' })
+      source.applyOrderSync(platformOrders())
+      // platform 是末列，去掉每行最后一个字段即得老格式。
+      const legacy = source
+        .exportCsv()
+        .split('\n')
+        .map((line) => line.replace(/,[^,]*$/, ''))
+        .join('\n')
+      expect(legacy.split('\n')[0]?.split(',')).not.toContain('platform')
+
+      const target = openLedger({ path: ':memory:' })
+      const result = target.importCsv(legacy)
+
+      expect(result.keys.inserted).toBe(2)
+      expect(target.listKeys().items.every((item) => item.platform === 'unknown')).toBe(true)
+      source.close()
+      target.close()
+    })
   })
 
   describe('订单快照', () => {

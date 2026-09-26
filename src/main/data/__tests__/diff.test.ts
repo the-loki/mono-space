@@ -80,4 +80,15 @@ describe('订单快照比对', () => {
     expect(diff.changed).toEqual([])
     expect(diff.removed).toEqual([])
   })
+
+  it('platform 变化计入 key 指纹（否则平台改动对快照不可见）', () => {
+    const previous = order('o1')
+    const next = order('o1')
+    next.bundles[0]!.keys[0]!.platform = 'steam'
+
+    const diff = diffOrderSnapshots([previous], [next])
+
+    expect(diff.changed).toHaveLength(1)
+    expect(diff.changed[0]?.changedFields).toContain('keys')
+  })
 })

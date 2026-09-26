@@ -8,9 +8,9 @@
 用户在 Humble Bundle 购得的游戏开发素材包。本项目的管理对象。
 _Avoid_: 游戏、许可、key
 
-**引擎资产包**:
-以某个引擎（Unity / Unreal / GameMaker）为目标的资产集合。用户实际购买的唯一形态。
-_Avoid_: 素材包、资源包、bundle
+**平台 (Platform)**:
+一条 Key 在哪个商店兑换（fab / epic / steam / unity / gog），认不出的记作未知。它是**逐条 Key** 的属性——同一订单里可能混着多个平台。
+_Avoid_: 引擎、渠道、来源站
 
 **Key**:
 Humble 订单中一条可揭示的凭据条目。揭示之前它还没有具体值。
