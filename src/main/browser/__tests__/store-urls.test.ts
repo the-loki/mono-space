@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EPIC_REDEEM_URL, humbleOrderUrl, LOGIN_URLS } from '../tasks'
+import { EPIC_REDEEM_URL, humbleOrderUrl, LOGIN_URLS } from '../store-urls'
 
 describe('动作入口 URL', () => {
   it('揭示走「这一单」的订单页（不再用 48 页分页的密钥页），兑换走 Epic 兑换页', () => {

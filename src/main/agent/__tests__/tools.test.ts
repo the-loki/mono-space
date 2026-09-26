@@ -33,12 +33,6 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
         : null,
     ),
     // —— 浏览器（融合缩减后的 5 个工具背后）——
-    browserCurrentPage: vi.fn(async () => ({
-      pageId: 1,
-      url: 'u',
-      title: 't',
-      selected: true,
-    })),
     browserOpenPage: vi.fn(async (url: string) => ({ pageId: 2, url, title: 't', selected: true })),
     browserNavigatePage: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', selected: true })),
     browserTakeSnapshot: vi.fn(async () => ({
@@ -205,11 +199,10 @@ describe('工具行为', () => {
     expect(result.found).toBe(false)
   })
 
-  it('act(click) 作用于当前页面并转发 uid', async () => {
+  it('act(click) 把 uid 转发到宿主（当前页由宿主解析，见 host.test.ts）', async () => {
     const host = fakeHost()
     await toolNamed(`${TOOL_PREFIX}act`, host).run({ action: 'click', uid: '1_5' })
-    expect(host.browserCurrentPage).toHaveBeenCalled()
-    expect(host.browserClick).toHaveBeenCalledWith(1, '1_5', { includeSnapshot: undefined })
+    expect(host.browserClick).toHaveBeenCalledWith('1_5', { includeSnapshot: undefined })
   })
 
   it('act(click) 缺 uid 时给一句能照着做的错', async () => {
@@ -222,7 +215,7 @@ describe('工具行为', () => {
   it('dom 作用于当前页面并转发 verbose', async () => {
     const host = fakeHost()
     const result = await toolNamed(`${TOOL_PREFIX}dom`, host).run({ verbose: true })
-    expect(host.browserTakeSnapshot).toHaveBeenCalledWith(1, {
+    expect(host.browserTakeSnapshot).toHaveBeenCalledWith({
       filePath: undefined,
       verbose: true,
     })
@@ -235,7 +228,7 @@ describe('工具行为', () => {
       function: '() => document.title',
       args: [1, 'a'],
     })
-    expect(host.browserEvaluateScript).toHaveBeenCalledWith(1, '() => document.title', {
+    expect(host.browserEvaluateScript).toHaveBeenCalledWith('() => document.title', {
       args: [1, 'a'],
       filePath: undefined,
       waitForStableDom: undefined,
@@ -245,7 +238,7 @@ describe('工具行为', () => {
   it('act(goto) 转发 url', async () => {
     const host = fakeHost()
     await toolNamed(`${TOOL_PREFIX}act`, host).run({ action: 'goto', url: 'https://example.com' })
-    expect(host.browserNavigatePage).toHaveBeenCalledWith(1, {
+    expect(host.browserNavigatePage).toHaveBeenCalledWith({
       type: 'url',
       url: 'https://example.com',
     })
@@ -258,7 +251,7 @@ describe('工具行为', () => {
       direction: 'up',
       amount: 300,
     })
-    expect(host.browserScroll).toHaveBeenCalledWith(1, 'up', 300)
+    expect(host.browserScroll).toHaveBeenCalledWith('up', 300)
   })
 
   it('keys_upsert 转发条目', async () => {

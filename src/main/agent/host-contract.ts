@@ -4,7 +4,9 @@
  * 刻意**不** import `browser/*` 的类型：契约要稳定，宿主负责把各模块的实际返回
  * 形状适配过来，这样浏览器各模块可以独立演进。
  *
- * 关键约定：**所有方法都不带 pageId**——一律作用于「当前打开的那个 MonoSpace 页面」。
+ * 关键约定：**动作类方法都不带 pageId**——一律作用于「当前打开的那个 MonoSpace 页面」，
+ * 由宿主在调用时解析（唯一解析点是 `host.ts` 的 `currentPageId()`，规则见 `current-page.ts`）。
+ * 唯一的例外是 `browserOpenPage`：它**创建**页面，返回的正是新页。
  */
 import type { PageInfo } from '../browser/pages'
 
@@ -74,82 +76,61 @@ export interface WithSnapshot {
   includeSnapshot?: boolean
 }
 
-/** 浏览器能力宿主：由主进程实现，工具层只调这些方法。 */
+/**
+ * 浏览器能力宿主：由主进程实现，工具层只调这些方法。
+ *
+ * **动作类方法都不收 pageId**（见文件头的约定）：页面由宿主自己解析；没有页面或
+ * 解析不出时抛出可读错误。返回值里仍带实际作用页面的 `pageId`，供调用方确认落在哪一页。
+ */
 export interface BrowserHost {
-  /** 定位「当前打开的那一个页面」；没有或多义时抛错并说明怎么办。 */
-  browserCurrentPage(): Promise<PageInfo>
-  /** 打开一个页面（store 分区），并把它设为当前页面。**开场用**：没有任何页面时 agent 无从下手。 */
+  /** 打开一个页面（store 分区）并让它成为当前页面。**开场用**：没有任何页面时 agent 无从下手。 */
   browserOpenPage(url: string): Promise<PageInfo>
 
-  browserNavigatePage(pageId: number, options: NavigatePageOptions): Promise<PageInfo>
+  browserNavigatePage(options: NavigatePageOptions): Promise<PageInfo>
 
-  browserTakeSnapshot(
-    pageId: number,
-    options?: { verbose?: boolean; filePath?: string },
-  ): Promise<SnapshotResult & { path?: string }>
-  browserTakeScreenshot(
-    pageId: number,
-    options?: {
-      uid?: string
-      filePath?: string
-      format?: 'png' | 'jpeg' | 'webp'
-      fullPage?: boolean
-      quality?: number
-    },
-  ): Promise<ScreenshotResult>
+  browserTakeSnapshot(options?: {
+    verbose?: boolean
+    filePath?: string
+  }): Promise<SnapshotResult & { path?: string }>
+  browserTakeScreenshot(options?: {
+    uid?: string
+    filePath?: string
+    format?: 'png' | 'jpeg' | 'webp'
+    fullPage?: boolean
+    quality?: number
+  }): Promise<ScreenshotResult>
 
   browserClick(
-    pageId: number,
     uid: string,
     options?: { dblClick?: boolean } & WithSnapshot,
   ): Promise<BrowserActionResult>
-  browserHover(pageId: number, uid: string, options?: WithSnapshot): Promise<BrowserActionResult>
-  browserDrag(
-    pageId: number,
-    fromUid: string,
-    toUid: string,
-    options?: WithSnapshot,
-  ): Promise<BrowserActionResult>
-  browserFill(
-    pageId: number,
-    uid: string,
-    value: string,
-    options?: WithSnapshot,
-  ): Promise<BrowserActionResult>
-  browserTypeText(
-    pageId: number,
-    text: string,
-    options?: { submitKey?: string },
-  ): Promise<BrowserActionResult>
-  browserPressKey(pageId: number, key: string, options?: WithSnapshot): Promise<BrowserActionResult>
+  browserHover(uid: string, options?: WithSnapshot): Promise<BrowserActionResult>
+  browserDrag(fromUid: string, toUid: string, options?: WithSnapshot): Promise<BrowserActionResult>
+  browserFill(uid: string, value: string, options?: WithSnapshot): Promise<BrowserActionResult>
+  browserTypeText(text: string, options?: { submitKey?: string }): Promise<BrowserActionResult>
+  browserPressKey(key: string, options?: WithSnapshot): Promise<BrowserActionResult>
   browserUploadFile(
-    pageId: number,
     uid: string,
     filePaths: string[],
     options?: WithSnapshot,
   ): Promise<BrowserActionResult>
   browserHandleDialog(
-    pageId: number,
     action: 'accept' | 'dismiss',
     promptText?: string,
   ): Promise<BrowserActionResult>
-  browserScroll(
-    pageId: number,
-    direction: 'up' | 'down',
-    amount?: number,
-  ): Promise<BrowserActionResult>
+  browserScroll(direction: 'up' | 'down', amount?: number): Promise<BrowserActionResult>
 
   browserEvaluateScript(
-    pageId: number,
     functionDeclaration: string,
     options?: { args?: unknown[]; filePath?: string; waitForStableDom?: boolean },
   ): Promise<EvaluateScriptResult>
 
   /** 错误汇总：控制台消息 + 失败的网络请求。 */
-  browserErrors(
-    pageId: number,
-    options?: { types?: string[]; includeStackTraces?: boolean; limit?: number },
-  ): Promise<{
+  browserErrors(options?: {
+    types?: string[]
+    includeStackTraces?: boolean
+    limit?: number
+  }): Promise<{
     pageId: number
     url: string
     errors: ConsoleMessage[]

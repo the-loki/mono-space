@@ -65,13 +65,11 @@ export function createBrowserTools(host: McpHost): ToolSpec[] {
           Type.Boolean({ description: '是否带上无障碍树里所有可用信息。默认 false。' }),
         ),
       }),
-      run: async (input) => {
-        const page = await host.browserCurrentPage()
-        return host.browserTakeSnapshot(page.pageId, {
+      run: async (input) =>
+        host.browserTakeSnapshot({
           filePath: input.filePath as string | undefined,
           verbose: input.verbose as boolean | undefined,
-        })
-      },
+        }),
     }),
 
     tool({
@@ -89,8 +87,7 @@ export function createBrowserTools(host: McpHost): ToolSpec[] {
         filePath: Type.Optional(Type.String({ description: '把图存到该路径，而不是内联返回' })),
       }),
       run: async (input) => {
-        const page = await host.browserCurrentPage()
-        const shot = await host.browserTakeScreenshot(page.pageId, {
+        const shot = await host.browserTakeScreenshot({
           uid: input.uid as string | undefined,
           fullPage: input.fullPage as boolean | undefined,
           format: input.format as 'png' | 'jpeg' | 'webp' | undefined,
@@ -123,14 +120,12 @@ export function createBrowserTools(host: McpHost): ToolSpec[] {
           Type.Boolean({ description: '是否等 DOM 稳定；只读脚本可传 false' }),
         ),
       }),
-      run: async (input) => {
-        const page = await host.browserCurrentPage()
-        return host.browserEvaluateScript(page.pageId, input.function as string, {
+      run: async (input) =>
+        host.browserEvaluateScript(input.function as string, {
           args: input.args as unknown[] | undefined,
           filePath: input.filePath as string | undefined,
           waitForStableDom: input.waitForStableDom as boolean | undefined,
-        })
-      },
+        }),
     }),
 
     tool({
@@ -182,41 +177,36 @@ export function createBrowserTools(host: McpHost): ToolSpec[] {
         includeSnapshot,
       }),
       run: async (input) => {
-        const page = await host.browserCurrentPage()
-        const pageId = page.pageId
         const target = input.uid as string | undefined
         const snap = input.includeSnapshot as boolean | undefined
         switch (input.action as string) {
           case 'click':
-            return host.browserClick(pageId, require(target, 'click 需要 uid'), {
+            return host.browserClick(require(target, 'click 需要 uid'), {
               includeSnapshot: snap,
             })
           case 'dblclick':
-            return host.browserClick(pageId, require(target, 'dblclick 需要 uid'), {
+            return host.browserClick(require(target, 'dblclick 需要 uid'), {
               dblClick: true,
               includeSnapshot: snap,
             })
           case 'hover':
-            return host.browserHover(pageId, require(target, 'hover 需要 uid'), {
+            return host.browserHover(require(target, 'hover 需要 uid'), {
               includeSnapshot: snap,
             })
           case 'drag':
             return host.browserDrag(
-              pageId,
               require(target, 'drag 需要 uid'),
               require(input.toUid as string | undefined, 'drag 需要 toUid'),
               { includeSnapshot: snap },
             )
           case 'fill':
             return host.browserFill(
-              pageId,
               require(target, 'fill 需要 uid'),
               require(input.value as string | undefined, 'fill 需要 value'),
               { includeSnapshot: snap },
             )
           case 'type':
             return host.browserTypeText(
-              pageId,
               require(input.text as string | undefined, 'type 需要 text'),
               {
                 submitKey: input.key as string | undefined,
@@ -224,7 +214,6 @@ export function createBrowserTools(host: McpHost): ToolSpec[] {
             )
           case 'press_key':
             return host.browserPressKey(
-              pageId,
               require(input.key as string | undefined, 'press_key 需要 key'),
               {
                 includeSnapshot: snap,
@@ -232,25 +221,22 @@ export function createBrowserTools(host: McpHost): ToolSpec[] {
             )
           case 'upload':
             return host.browserUploadFile(
-              pageId,
               require(target, 'upload 需要 uid'),
               require(input.filePaths as string[] | undefined, 'upload 需要 filePaths'),
               { includeSnapshot: snap },
             )
           case 'scroll':
             return host.browserScroll(
-              pageId,
               (input.direction as 'up' | 'down') ?? 'down',
               input.amount as number | undefined,
             )
           case 'goto':
-            return host.browserNavigatePage(pageId, {
+            return host.browserNavigatePage({
               type: 'url',
               url: require(input.url as string | undefined, 'goto 需要 url'),
             })
           case 'dialog':
             return host.browserHandleDialog(
-              pageId,
               input.accept === false ? 'dismiss' : 'accept',
               input.promptText as string | undefined,
             )
@@ -276,14 +262,12 @@ export function createBrowserTools(host: McpHost): ToolSpec[] {
         includeStackTraces: Type.Optional(Type.Boolean()),
         limit: Type.Optional(Type.Integer({ description: '最多返回多少条，默认 50' })),
       }),
-      run: async (input) => {
-        const page = await host.browserCurrentPage()
-        return host.browserErrors(page.pageId, {
+      run: async (input) =>
+        host.browserErrors({
           types: input.types as string[] | undefined,
           includeStackTraces: input.includeStackTraces as boolean | undefined,
           limit: input.limit as number | undefined,
-        })
-      },
+        }),
     }),
   ]
 }

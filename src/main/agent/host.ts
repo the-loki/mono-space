@@ -27,11 +27,12 @@ import { listConsoleMessages, listNetworkRequests, takeScreenshot } from '../bro
 import { getPage, getSelectedPageId, listPages, navigatePage } from '../browser/pages'
 import { evaluateScript } from '../browser/script'
 import { getStoreSession } from '../browser/store-session'
+import { humbleOrderUrl } from '../browser/store-urls'
 import { openStoreView } from '../browser/store-view'
 import { buildPageOrder } from '../data/page-ingest'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
-import { humbleOrderUrl, runRedeem } from '../ipc/tasks'
+import { runRedeem } from '../ipc/tasks'
 import { chooseCurrentPage } from './current-page'
 import type { BrowserActionResult, SnapshotResult } from './host-contract'
 import type { LedgerRow, LedgerStats, McpHost, UpsertResult } from './tools'
@@ -115,14 +116,22 @@ export function createMcpHost(): McpHost {
     return redactAccountTitle(window.webContents.getTitle())
   }
 
-  function pageInfoOf(window: BrowserWindow) {
-    const selected = getSelectedPageId() === window.id
-    return {
-      pageId: window.id,
-      url: window.webContents.getURL(),
-      title: titleOf(window),
-      selected,
+  /**
+   * 解析「当前打开的那个 MonoSpace 页面」。全宿主唯一的解析点：
+   * 每个动作方法都在调用时问一次，所以 `page_open` 新开的页面会立刻成为后续动作的目标
+   * （不缓存 pageId）。没有页面时抛出与收敛前 `browserCurrentPage()` 同一句错误。
+   */
+  function currentPageId(): number {
+    // 页面由 App 的界面打开；agent 只操作「当前那一个」。
+    const pages = listPages()
+    if (pages.length === 0) {
+      throw new Error(
+        '当前没有打开任何 MonoSpace 页面；请先在 App 界面里打开（登录 / 同步等入口）。',
+      )
     }
+    const chosen = chooseCurrentPage(pages, { selectedId: getSelectedPageId() })
+    if (!chosen) throw new Error('没能确定要操作哪个 MonoSpace 页面。')
+    return chosen.pageId
   }
 
   function nextUidPrefix(pageId: number): number {
@@ -314,26 +323,13 @@ export function createMcpHost(): McpHost {
       return outcome
     },
 
-    // —————————————————————— 当前页面（不再有 pageId） ——————————————————————
-    async browserCurrentPage() {
-      // 页面由 App 的界面打开；agent 只操作「当前那一个」。
-      const pages = listPages()
-      if (pages.length === 0) {
-        throw new Error(
-          '当前没有打开任何 MonoSpace 页面；请先在 App 界面里打开（登录 / 同步等入口）。',
-        )
-      }
-      const chosen = chooseCurrentPage(pages, { selectedId: getSelectedPageId() })
-      if (!chosen) throw new Error('没能确定要操作哪个 MonoSpace 页面。')
-      return chosen
-    },
-
+    // —————————————————————— 当前页面 / 开场（无 pageId） ——————————————————————
     /**
      * 打开一个页面并设为当前页面。
      *
-     * 为什么必须有它：`browserCurrentPage` 在**没有任何页面**时直接抛错（它假定页面由界面打开），
-     * 而台账为空时 `key_open(keyId)` 也无从调用 —— agent 会卡在「没有起点」。
-     * 这里给的就是那个起点：由 agent 自己打开第一张页面。
+     * 为什么必须有它：动作类方法在**没有任何页面**时直接抛错（它们假定页面由界面打开，
+     * 见 `currentPageId()`），而台账为空时 `key_open(keyId)` 也无从调用 —— agent 会卡在
+     * 「没有起点」。这里给的就是那个起点：由 agent 自己打开第一张页面。
      *
      * 与 `monospace_act(goto)` 的区别：goto 是在**已有页面**上导航，本工具是**创建**页面。
      */
@@ -344,13 +340,15 @@ export function createMcpHost(): McpHost {
     },
 
     // —————————————————————— 操作（act） ——————————————————————
-    async browserScroll(pageId, direction, amount) {
+    async browserScroll(direction, amount) {
+      const pageId = currentPageId()
       await scrollPage(getPage(pageId), direction, amount ?? 800)
       return actionResult(pageId, `向${direction === 'down' ? '下' : '上'}滚动`)
     },
 
     // —————————————————————— 错误（errors） ——————————————————————
-    async browserErrors(pageId, options) {
+    async browserErrors(options) {
+      const pageId = currentPageId()
       const window = getPage(pageId)
       const types = options?.types ?? ['error', 'warning']
       const limit = options?.limit ?? 50
@@ -379,7 +377,8 @@ export function createMcpHost(): McpHost {
 
     // —————————————————————— 页面管理（navigation） ——————————————————————
 
-    async browserNavigatePage(pageId, options) {
+    async browserNavigatePage(options) {
+      const pageId = currentPageId()
       invalidateRefs(pageId)
       return navigatePage(pageId, options)
     },
@@ -387,9 +386,12 @@ export function createMcpHost(): McpHost {
     // —————————————————————— 仿真（emulation） ——————————————————————
 
     // —————————————————————— 快照 / 截图 ——————————————————————
-    browserTakeSnapshot: takeSnapshotFor,
+    async browserTakeSnapshot(options) {
+      return takeSnapshotFor(currentPageId(), options)
+    },
 
-    async browserTakeScreenshot(pageId, options) {
+    async browserTakeScreenshot(options) {
+      const pageId = currentPageId()
       const window = getPage(pageId)
       const backendDOMNodeId = options?.uid
         ? refOf(pageId, options.uid).backendDOMNodeId
@@ -411,7 +413,8 @@ export function createMcpHost(): McpHost {
     },
 
     // —————————————————————— 输入（input） ——————————————————————
-    async browserClick(pageId, uid, options) {
+    async browserClick(uid, options) {
+      const pageId = currentPageId()
       const ref = refOf(pageId, uid)
       const box = await clickElement(getPage(pageId), ref.backendDOMNodeId, {
         dblClick: options?.dblClick,
@@ -423,7 +426,8 @@ export function createMcpHost(): McpHost {
       )
     },
 
-    async browserHover(pageId, uid, options) {
+    async browserHover(uid, options) {
+      const pageId = currentPageId()
       const ref = refOf(pageId, uid)
       await hoverElement(getPage(pageId), ref.backendDOMNodeId)
       return actionResult(
@@ -433,7 +437,8 @@ export function createMcpHost(): McpHost {
       )
     },
 
-    async browserDrag(pageId, fromUid, toUid, options) {
+    async browserDrag(fromUid, toUid, options) {
+      const pageId = currentPageId()
       const from = refOf(pageId, fromUid)
       const to = refOf(pageId, toUid)
       await dragElement(getPage(pageId), from.backendDOMNodeId, to.backendDOMNodeId)
@@ -444,7 +449,8 @@ export function createMcpHost(): McpHost {
       )
     },
 
-    async browserFill(pageId, uid, value, options) {
+    async browserFill(uid, value, options) {
+      const pageId = currentPageId()
       const ref = refOf(pageId, uid)
       const filled = await fillElement(getPage(pageId), ref.backendDOMNodeId, value)
       return actionResult(
@@ -454,7 +460,8 @@ export function createMcpHost(): McpHost {
       )
     },
 
-    async browserTypeText(pageId, text, options) {
+    async browserTypeText(text, options) {
+      const pageId = currentPageId()
       await typeText(getPage(pageId), text, { submitKey: options?.submitKey })
       return actionResult(
         pageId,
@@ -463,24 +470,28 @@ export function createMcpHost(): McpHost {
       )
     },
 
-    async browserPressKey(pageId, key, options) {
+    async browserPressKey(key, options) {
+      const pageId = currentPageId()
       await pressKeyCombo(getPage(pageId), key)
       return actionResult(pageId, `按下了 ${key}`, options?.includeSnapshot)
     },
 
-    async browserUploadFile(pageId, uid, filePaths, options) {
+    async browserUploadFile(uid, filePaths, options) {
+      const pageId = currentPageId()
       const ref = refOf(pageId, uid)
       await uploadFile(getPage(pageId), ref.backendDOMNodeId, filePaths)
       return actionResult(pageId, `上传了 ${filePaths.length} 个文件`, options?.includeSnapshot)
     },
 
-    async browserHandleDialog(pageId, action, promptText) {
+    async browserHandleDialog(action, promptText) {
+      const pageId = currentPageId()
       await handleDialog(getPage(pageId), action, promptText)
       return actionResult(pageId, `对话框已 ${action === 'accept' ? '接受' : '取消'}`)
     },
 
     // —————————————————————— 调试（debugging） ——————————————————————
-    async browserEvaluateScript(pageId, functionDeclaration, options) {
+    async browserEvaluateScript(functionDeclaration, options) {
+      const pageId = currentPageId()
       const result = await evaluateScript(getPage(pageId), functionDeclaration, options ?? {})
       return result
     },

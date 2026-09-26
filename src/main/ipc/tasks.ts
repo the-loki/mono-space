@@ -1,33 +1,29 @@
 /**
- * 动作 IPC：把「揭示 / 兑换」两条链路接到渲染进程（`#25` / `#26`）。
+ * 动作 IPC：把「兑换 / 登录」两条链路接到渲染进程（`#25` / `#26`）。
  *
- * 契约：
+ * 契约（本文件只注册这两个通道，没有别的）：
  *   - `tasks:redeem` (keyId) -> TaskIpcResult
  *   - `tasks:login`  ()      -> LoginWindowResult[]
  *
  * 两者都会**打开可见窗口**（人可随时接管：登录 / 验证码 / 确认条款）。
  * **揭示不在这里**：特征匹配删除后揭示由内置 agent 走浏览器操作完成
  * （见 ADR-0003 与 `agent/prompts.ts`），所以本文件只剩兑换与登录。
+ *
+ * 页面地址（订单页 / Epic 兑换页 / 登录页）不在这里：那是「页面」的领域知识，
+ * 见 `browser/store-urls.ts`；本文件只做通道注册与流程编排。
  */
 import { ipcMain } from 'electron'
 import { ensureBundledExtensions } from '../browser/bundled-extensions'
-import { getPage } from '../browser/pages'
 import { getStoreSession } from '../browser/store-session'
+import { EPIC_REDEEM_URL, LOGIN_URLS } from '../browser/store-urls'
 import { openStoreView } from '../browser/store-view'
 import { ChannelTimeoutError, createWindowCommandChannel } from '../redeem/channel'
 import { redeemOne } from '../redeem/flow'
 import { createRedeemPorts } from '../redeem/page-driver'
 import { ledgerRepository } from './ledger'
-import { createDefaultSyncClient } from './sync'
 
 export const TASK_REDEEM_CHANNEL = 'tasks:redeem'
 export const TASK_LOGIN_CHANNEL = 'tasks:login'
-
-/** 两个 store 的登录入口（`docs/spec/14` §7「首次运行引导」）。 */
-export const LOGIN_URLS: Record<string, string> = {
-  humble: 'https://www.humblebundle.com/login',
-  epic: 'https://www.epicgames.com/id/login',
-}
 
 /** 打开过的登录窗口（id + 落地 URL + HTTP 状态）。 */
 export interface LoginWindowResult {
@@ -41,7 +37,7 @@ export interface LoginWindowResult {
 /**
  * 打开 Humble / Epic 的登录页（可见窗口）。
  *
- * 登录态落在 `persist:store` 分区，之后的同步（`sync:run`）与揭示/兑换（`tasks:reveal|redeem`）
+ * 登录态落在 `persist:store` 分区，之后的同步（`sync:run`）与兑换（`tasks:redeem`）
  * 都复用同一个分区，所以在这里登录一次即可。
  */
 async function runLogin(): Promise<LoginWindowResult[]> {
@@ -59,22 +55,6 @@ async function runLogin(): Promise<LoginWindowResult[]> {
   }
   return results
 }
-
-/** Humble 的 key 列表页（揭示入口）。 */
-/**
- * 某一单的专属页：**只列这一单的 key、没有分页**（实测 `/download?key=` 会 302 到这里）。
- *
- * 为什么揭示走它而不是 `/home/keys`：密钥页有 48 页分页、952 个 key 挤在一起，要在里面认出
- * 「这一条」的控件既慢又容易认错（认错就会点到别的 key —— 不可逆）。订单页只有这一单的条目，
- * 定位可靠得多；而且**已揭示的 key 在这个页面上本来就直接显示码**，不需要点。
- *
- * 约束：码只从页面读（见 `page-reader.ts` 的 `CrossCheckState`），接口只做核对与查缺口。
- */
-export function humbleOrderUrl(gamekey: string): string {
-  return `https://www.humblebundle.com/downloads?key=${encodeURIComponent(gamekey)}`
-}
-/** Epic 账号兑换页（`#12`）。 */
-export const EPIC_REDEEM_URL = 'https://www.epicgames.com/account/code-redemption'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
