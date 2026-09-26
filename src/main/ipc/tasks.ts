@@ -112,7 +112,7 @@ export interface TaskIpcResult {
   note: string
 }
 
-async function runReveal(keyId: number): Promise<TaskIpcResult> {
+export async function runReveal(keyId: number): Promise<TaskIpcResult> {
   const repository = ledgerRepository()
   const detail = repository.getKey(keyId)
   if (!detail) throw new Error(`key 不存在：${keyId}`)
@@ -130,7 +130,7 @@ async function runReveal(keyId: number): Promise<TaskIpcResult> {
   return revealOne(input, createRevealPorts({ channel, repository }))
 }
 
-async function runRedeem(keyId: number): Promise<TaskIpcResult> {
+export async function runRedeem(keyId: number): Promise<TaskIpcResult> {
   const repository = ledgerRepository()
   const detail = repository.getKey(keyId)
   if (!detail) throw new Error(`key 不存在：${keyId}`)
