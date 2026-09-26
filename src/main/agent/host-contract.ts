@@ -78,6 +78,8 @@ export interface WithSnapshot {
 export interface BrowserHost {
   /** 定位「当前打开的那一个页面」；没有或多义时抛错并说明怎么办。 */
   browserCurrentPage(): Promise<PageInfo>
+  /** 打开一个页面（store 分区），并把它设为当前页面。**开场用**：没有任何页面时 agent 无从下手。 */
+  browserOpenPage(url: string): Promise<PageInfo>
 
   browserNavigatePage(pageId: number, options: NavigatePageOptions): Promise<PageInfo>
 

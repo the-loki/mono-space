@@ -46,6 +46,8 @@ describe('createEmbeddedAgent', () => {
 
       // 揭示：不再有硬编码工具，但 agent 需要能打开那一单的页面（只开页面、不点击）。
       expect(names).toContain('monospace_key_open')
+      // 开场入口：一个页面都没打开时，agent 必须能自己开一张（否则空台账时无从下手）。
+      expect(names).toContain('monospace_page_open')
       expect(names).not.toContain('monospace_key_reveal')
 
       // 兑换仍是 L2，仍然不给模型。

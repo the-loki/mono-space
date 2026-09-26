@@ -322,6 +322,21 @@ export function createMcpHost(): McpHost {
       return chosen
     },
 
+    /**
+     * 打开一个页面并设为当前页面。
+     *
+     * 为什么必须有它：`browserCurrentPage` 在**没有任何页面**时直接抛错（它假定页面由界面打开），
+     * 而台账为空时 `key_open(keyId)` 也无从调用 —— agent 会卡在「没有起点」。
+     * 这里给的就是那个起点：由 agent 自己打开第一张页面。
+     *
+     * 与 `monospace_act(goto)` 的区别：goto 是在**已有页面**上导航，本工具是**创建**页面。
+     */
+    async browserOpenPage(url) {
+      const view = await openStoreView(getStoreSession(), url, { show: true, exclusive: true })
+      await appendAudit({ at: new Date().toISOString(), tool: 'page_open' })
+      return { pageId: view.id, url: view.url, title: view.title, selected: true }
+    },
+
     // —————————————————————— 操作（act） ——————————————————————
     async browserScroll(pageId, direction, amount) {
       await scrollPage(getPage(pageId), direction, amount ?? 800)

@@ -42,6 +42,7 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
       title: 't',
       selected: true,
     })),
+    browserOpenPage: vi.fn(async (url: string) => ({ pageId: 2, url, title: 't', selected: true })),
     browserNavigatePage: vi.fn(async () => ({ pageId: 1, url: 'u', title: 't', selected: true })),
     browserTakeSnapshot: vi.fn(async () => ({
       pageId: 1,
@@ -95,16 +96,18 @@ describe('命名：全部 monospace_ 前缀（防与其它浏览器 MCP 撞名�
     const tools = createTools(fakeHost())
     // 与内置浏览器语义相关的工具（key_page_read 也会驱动内置浏览器，但不带 browser 段）。
     const browserSemantic = [
+      `${TOOL_PREFIX}page_open`,
       `${TOOL_PREFIX}dom`,
       `${TOOL_PREFIX}screenshot`,
       `${TOOL_PREFIX}script`,
       `${TOOL_PREFIX}act`,
       `${TOOL_PREFIX}errors`,
     ]
-    // 融合缩减：浏览器接口就这 5 个（其余能力收进 act）。
+    // 融合缩减：浏览器接口就这 6 个（其余能力收进 act）。page_open 是**开场入口**：
+    // 一个页面都没打开时，其余浏览器工具都无从下手（它们只作用于当前页面）。
     expect(
       tools.filter((tool) => tool.description.includes('MonoSpace 应用内置的浏览会话')).length,
-    ).toBe(5)
+    ).toBe(6)
     for (const name of browserSemantic) {
       const tool = tools.find((candidate) => candidate.name === name)
       expect(tool, name).toBeDefined()
@@ -326,10 +329,25 @@ describe('工具表完整性', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  it('浏览器接口就 5 个，领域接口 7 个', () => {
+  it('浏览器接口 6 个（含开场入口 page_open），领域接口 7 个', () => {
     const tools = createTools(fakeHost())
     const browser = tools.filter((tool) => tool.description.includes('不是系统 Chrome'))
-    expect(browser).toHaveLength(5)
-    expect(tools).toHaveLength(12)
+    expect(browser).toHaveLength(6)
+    expect(tools).toHaveLength(13)
+  })
+})
+
+describe('开场入口 page_open（没有页面时 agent 的起点）', () => {
+  it('把 url 交给 host 打开，并把新页面当作当前页', async () => {
+    const host = fakeHost()
+    const result = await toolNamed(`${TOOL_PREFIX}page_open`, host).run({
+      url: 'https://www.humblebundle.com/home/keys',
+    })
+    expect(host.browserOpenPage).toHaveBeenCalledWith('https://www.humblebundle.com/home/keys')
+    expect(result).toMatchObject({ pageId: 2, selected: true })
+  })
+
+  it('工具清单里有它（否则空台账时无从下手）', () => {
+    expect(createTools(fakeHost()).map((t) => t.name)).toContain(`${TOOL_PREFIX}page_open`)
   })
 })

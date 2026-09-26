@@ -35,6 +35,21 @@ function tool(spec: Omit<ToolSpec, 'layer'> & { layer?: ToolSpec['layer'] }): To
 export function createBrowserTools(host: McpHost): ToolSpec[] {
   return [
     tool({
+      name: `${TOOL_PREFIX}page_open`,
+      title: 'MonoSpace 页面：打开（开场用）',
+      description:
+        '在 MonoSpace 内置浏览器里**打开一个页面**并把它设为当前页面。\n' +
+        '为什么需要它：其余浏览器工具都只作用于**当前页面**（没有「选哪个页面」的参数），' +
+        '所以当 MonoSpace 里一个页面都没打开时，你必须先用本工具打开一个 —— 否则无从下手。\n' +
+        `作用域：${BROWSER_SCOPE}\n` +
+        '提示：打开 Humble 的密钥页（https://www.humblebundle.com/home/keys）或某单的订单页' +
+        '（https://www.humblebundle.com/downloads?key=<gamekey>）后，再用 monospace_dom 看内容。',
+      parameters: Type.Object({
+        url: Type.String({ description: '要打开的地址（通常是 humblebundle.com 的页面）' }),
+      }),
+      run: (input) => host.browserOpenPage(input.url as string),
+    }),
+    tool({
       name: `${TOOL_PREFIX}dom`,
       title: 'MonoSpace 页面：取 DOM',
       description:
