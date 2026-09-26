@@ -87,11 +87,19 @@ export function slug(value: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
-/** 资产包身份：页面给了分组名就用它，否则退回「订单 + 页面」的兜底包。 */
+/**
+ * 资产包身份：**只由订单决定**（`<gamekey>_page`），与分组名无关。
+ *
+ * 为什么不能拿分组名当身份——实测踩到：agent 有时传 bundleName、有时不传，
+ * 同一单重读就长成两个资产包，于是同一批 key **重复入库**（各自挂在不同的包下）。
+ * 另外分组名可能是中文（如页面品牌文字「史诗级游戏商店」），`slug()` 会返回空串，
+ * 身份退化成 `""` —— 这比不稳定更糟。身份与名字解耦后，这两种病一起消失。
+ *
+ * 页面上的分组名仍然有用，但它只做**显示名**（`SyncedBundle.name`），不参与身份。
+ */
 export function pageBundleRemoteId(read: PageOrderRead): string {
-  const name = read.bundleName?.trim()
-  if (name) return slug(name)
-  return `${slug(read.orderGamekey)}_page`
+  const base = slug(read.orderGamekey)
+  return base ? `${base}_page` : 'page'
 }
 
 /**

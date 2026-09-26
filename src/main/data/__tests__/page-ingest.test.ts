@@ -57,17 +57,27 @@ describe('pageKeyRemoteIds：重读必须得到同一个身份（否则台账会
   })
 })
 
-describe('pageBundleRemoteId', () => {
-  it('页面给了分组名就用它', () => {
-    expect(
-      pageBundleRemoteId({ orderGamekey: 'TXzbXSpB', bundleName: 'Leartes Megabundle', keys: [] }),
-    ).toBe('leartes_megabundle')
+describe('pageBundleRemoteId：身份只由订单决定（与分组名无关）', () => {
+  it('同一单无论有没有分组名，身份都一样 —— 否则重读会长出第二个包、key 重复', () => {
+    const withName = pageBundleRemoteId({
+      orderGamekey: 'TXzbXSpB',
+      bundleName: 'Leartes Megabundle',
+      keys: [],
+    })
+    const withoutName = pageBundleRemoteId({ orderGamekey: 'TXzbXSpB', keys: [] })
+    expect(withName).toBe(withoutName)
+    expect(withName).toBe('txzbxspb_page')
   })
 
-  it('页面看不出分组 → 退回「订单 + 页面」的兜底包（不要编一个分组）', () => {
-    expect(pageBundleRemoteId({ orderGamekey: 'TXzbXSpBc3qfUc3M', keys: [] })).toBe(
-      'txzbxspbc3qfuc3m_page',
-    )
+  it('实测踩到：agent 把页面品牌文字（中文）当分组名传进来，身份也不能退化', () => {
+    // slug('史诗级游戏商店') 是空串；若拿分组名当身份，包 remote_id 会变成 ""。
+    expect(
+      pageBundleRemoteId({ orderGamekey: 'TXzbXSpB', bundleName: '史诗级游戏商店', keys: [] }),
+    ).toBe('txzbxspb_page')
+  })
+
+  it('订单 gamekey 认不出字符时也不出空身份', () => {
+    expect(pageBundleRemoteId({ orderGamekey: '订单', keys: [] })).toBe('page')
   })
 })
 
