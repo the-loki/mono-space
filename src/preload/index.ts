@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { KeyPage, KeyQuery } from '../main/data/types'
+import type { AgentRunResult, AgentStatus } from '../main/ipc/agent'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
 import type { SyncIpcResult } from '../main/ipc/sync'
 import type { LoginWindowResult, TaskIpcResult } from '../main/ipc/tasks'
@@ -16,6 +17,11 @@ const api = {
   /** 只读同步：拉 Humble 订单并增量入库。 */
   sync: {
     run: (): Promise<SyncIpcResult> => ipcRenderer.invoke('sync:run'),
+  },
+  /** 内置 agent：手动触发一次（用 MonoSpace 自己的工具操作当前页面 / 台账）。 */
+  agent: {
+    status: (): Promise<AgentStatus> => ipcRenderer.invoke('agent:status'),
+    run: (prompt: string): Promise<AgentRunResult> => ipcRenderer.invoke('agent:run', prompt),
   },
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {

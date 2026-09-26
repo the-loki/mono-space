@@ -87,6 +87,26 @@ export interface MonoSpaceLoginWindow {
   title: string
 }
 
+/** 内置 agent 的工具调用记录。 */
+export interface MonoSpaceAgentToolCall {
+  name: string
+  ok: boolean
+}
+
+/** 内置 agent 的一次运行结果。 */
+export interface MonoSpaceAgentRunResult {
+  ok: boolean
+  text: string
+  toolCalls: MonoSpaceAgentToolCall[]
+  message?: string
+}
+
+/** 内置 agent 的配置状态。 */
+export interface MonoSpaceAgentStatus {
+  ready: boolean
+  reason?: string
+}
+
 export interface MonoSpaceApi {
   ping(message: string): Promise<string>
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
@@ -98,6 +118,11 @@ export interface MonoSpaceApi {
   /** 只读同步：拉 Humble 订单并增量入库。 */
   sync: {
     run(): Promise<MonoSpaceSyncResult>
+  }
+  /** 内置 agent：手动触发一次（工具注入自带 Pi，不依赖外部 agent）。 */
+  agent: {
+    status(): Promise<MonoSpaceAgentStatus>
+    run(prompt: string): Promise<MonoSpaceAgentRunResult>
   }
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {

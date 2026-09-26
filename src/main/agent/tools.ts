@@ -1,5 +1,5 @@
 /**
- * MonoSpace 的 MCP 工具面（`#31`）。
+ * MonoSpace 的工具面（`#31`）：不再走 MCP，由主进程注入内置 Pi agent。
  *
  * 命名规则（用户要求，避免与其它浏览器 MCP 冲突）：
  * - **所有工具一律 `monospace_` 前缀**；浏览器类再带 `browser` 段（如 `monospace_browser_goto`）。
@@ -8,7 +8,7 @@
  *
  * 权限分层沿用 `#13`：只读自动放行；写入自动但留痕；不可逆写入必须人在环路。
  */
-import { z } from 'zod'
+import { type TObject, Type } from 'typebox'
 import type { BrowserHost } from './host-contract'
 import { createBrowserTools } from './tools-browser'
 
@@ -84,14 +84,15 @@ export interface McpHost extends BrowserHost {
   keyRedeem(keyId: number): Promise<ActionOutcome>
 }
 
-/** 一个工具的定义：MCP 注册所需的最小信息。 */
-export interface McpToolSpec {
+/** 一个工具的定义：注入 Pi agent 所需的最小信息。 */
+export interface ToolSpec {
   name: string
   title: string
   description: string
   /** 只读 / 写入 / 不可逆（用于权限分层与审计）。 */
   layer: 'L0' | 'L1' | 'L2'
-  inputSchema: z.ZodRawShape
+  /** Pi SDK 要求参数是 TypeBox schema（顶层必须是 object）。 */
+  parameters: TObject
   run(input: Record<string, unknown>): Promise<unknown>
 }
 
@@ -112,7 +113,7 @@ export const BROWSER_SCOPE =
   '操作对象完全不同，不要把它们的目标与这里的目标混用。'
 
 /** 建全部工具（出口处统一补 `【MonoSpace】` 前缀，保证没有漏网的）。 */
-export function createMcpTools(host: McpHost): McpToolSpec[] {
+export function createTools(host: McpHost): ToolSpec[] {
   return [...createDomainTools(host), ...createBrowserTools(host)].map((spec) => ({
     ...spec,
     description: spec.description.includes(MONOSPACE_TAG)
@@ -122,7 +123,7 @@ export function createMcpTools(host: McpHost): McpToolSpec[] {
 }
 
 /** 领域工具（MonoSpace 自己的台账 / 同步 / 揭示 / 兑换）。 */
-function createDomainTools(host: McpHost): McpToolSpec[] {
+function createDomainTools(host: McpHost): ToolSpec[] {
   return [
     {
       name: `${TOOL_PREFIX}ledger_stats`,
@@ -130,7 +131,7 @@ function createDomainTools(host: McpHost): McpToolSpec[] {
       description:
         '统计 MonoSpace 台账：总数与「未揭示 / 已揭示未兑换 / 已兑换」分布、各引擎数量。只读。',
       layer: 'L0',
-      inputSchema: {},
+      parameters: Type.Object({}),
       run: () => host.ledgerStats(),
     },
     {
@@ -139,12 +140,19 @@ function createDomainTools(host: McpHost): McpToolSpec[] {
       description:
         '分页查询 MonoSpace 台账列表（资产名 / 包 / 订单 / 引擎 / 揭示与兑换状态）。**不含兑换码明文**；要码请用 key_context。只读。',
       layer: 'L0',
-      inputSchema: {
-        view: z.enum(['all', 'unrevealed', 'revealed_unredeemed', 'redeemed']).optional(),
-        engine: z.string().optional(),
-        limit: z.number().int().min(1).max(500).optional(),
-        offset: z.number().int().min(0).optional(),
-      },
+      parameters: Type.Object({
+        view: Type.Optional(
+          Type.Union([
+            Type.Literal('all'),
+            Type.Literal('unrevealed'),
+            Type.Literal('revealed_unredeemed'),
+            Type.Literal('redeemed'),
+          ]),
+        ),
+        engine: Type.Optional(Type.String()),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+        offset: Type.Optional(Type.Integer({ minimum: 0 })),
+      }),
       run: (input) =>
         host.ledgerQuery({
           view: input.view as string | undefined,
@@ -159,10 +167,10 @@ function createDomainTools(host: McpHost): McpToolSpec[] {
       description:
         '查 MonoSpace 台账里某条 key 的上下文（名称/包/订单/引擎/揭示与兑换状态）。**仅当 includeCode=true 时才返回兑换码明文**，且此调用会留痕。',
       layer: 'L0',
-      inputSchema: {
-        keyId: z.number().int().positive(),
-        includeCode: z.boolean().optional(),
-      },
+      parameters: Type.Object({
+        keyId: Type.Integer({ minimum: 1 }),
+        includeCode: Type.Optional(Type.Boolean()),
+      }),
       run: async (input) => {
         const context = await host.keyContext(input.keyId as number)
         if (!context) return { found: false, message: `台账里没有 keyId=${input.keyId}` }
@@ -179,7 +187,7 @@ function createDomainTools(host: McpHost): McpToolSpec[] {
       description:
         '让 MonoSpace 通过 **Humble 接口**跑一次只读同步：拉取订单列表与详情，增量写入台账（订单 → 引擎资产包 → key）。写入类，会留痕。',
       layer: 'L1',
-      inputSchema: {},
+      parameters: Type.Object({}),
       run: () => host.ordersSync(),
     },
     {
@@ -188,19 +196,17 @@ function createDomainTools(host: McpHost): McpToolSpec[] {
       description:
         '把外部 agent 从页面上读到的 key 信息（揭示状态 / 兑换码）写回 MonoSpace 台账。写入类，**强制留痕**。',
       layer: 'L1',
-      inputSchema: {
-        entries: z
-          .array(
-            z.object({
-              keyId: z.number().int().positive(),
-              code: z.string().nullable().optional(),
-              revealed: z.boolean().optional(),
-              note: z.string().optional(),
-            }),
-          )
-          .min(1)
-          .max(500),
-      },
+      parameters: Type.Object({
+        entries: Type.Array(
+          Type.Object({
+            keyId: Type.Integer({ minimum: 1 }),
+            code: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+            revealed: Type.Optional(Type.Boolean()),
+            note: Type.Optional(Type.String()),
+          }),
+          { minItems: 1, maxItems: 500 },
+        ),
+      }),
       run: (input) => host.keysUpsert(input.entries as KeyUpsertEntry[]),
     },
     {
@@ -209,7 +215,7 @@ function createDomainTools(host: McpHost): McpToolSpec[] {
       description:
         '让 MonoSpace 执行一次**揭示**（Humble，不可逆写操作）。会打开可见窗口；如需登录/reCAPTCHA，会停在**人在环路**并把 pause 原因回给你。',
       layer: 'L2',
-      inputSchema: { keyId: z.number().int().positive() },
+      parameters: Type.Object({ keyId: Type.Integer({ minimum: 1 }) }),
       run: (input) => host.keyReveal(input.keyId as number),
     },
     {
@@ -218,7 +224,7 @@ function createDomainTools(host: McpHost): McpToolSpec[] {
       description:
         '让 MonoSpace 执行一次**兑换**（Epic 兑换页 + My Library 校验）。会打开可见窗口；如需登录/验证码/条款确认，会停在**人在环路**并把 pause 原因回给你。',
       layer: 'L2',
-      inputSchema: { keyId: z.number().int().positive() },
+      parameters: Type.Object({ keyId: Type.Integer({ minimum: 1 }) }),
       run: (input) => host.keyRedeem(input.keyId as number),
     },
   ]

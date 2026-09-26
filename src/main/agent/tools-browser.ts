@@ -10,19 +10,20 @@
  *
  * 与其它浏览器 MCP 的区别只有两点：`monospace_` 命名 + 作用域是本 App 的内置会话。
  */
-import { z } from 'zod'
-import type { McpHost, McpToolSpec } from './tools'
+import { Type } from 'typebox'
+import type { McpHost, ToolSpec } from './tools'
 import { BROWSER_SCOPE, TOOL_PREFIX } from './tools'
 
 /** 元素引用：来自最近一次 `monospace_dom`。 */
-const uid = z.string().describe('元素在**最近一次** monospace_dom 结果里的 uid。必须用最新结果。')
+const uid = Type.String({
+  description: '元素在**最近一次** monospace_dom 结果里的 uid。必须用最新结果。',
+})
 
-const includeSnapshot = z
-  .boolean()
-  .optional()
-  .describe('动作完成后是否再附带一次页面 DOM。默认 false。')
+const includeSnapshot = Type.Optional(
+  Type.Boolean({ description: '动作完成后是否再附带一次页面 DOM。默认 false。' }),
+)
 
-function tool(spec: Omit<McpToolSpec, 'layer'> & { layer?: McpToolSpec['layer'] }): McpToolSpec {
+function tool(spec: Omit<ToolSpec, 'layer'> & { layer?: ToolSpec['layer'] }): ToolSpec {
   return {
     ...spec,
     layer: spec.layer ?? 'L1',
@@ -31,7 +32,7 @@ function tool(spec: Omit<McpToolSpec, 'layer'> & { layer?: McpToolSpec['layer'] 
 }
 
 /** 浏览器工具全集（5 个）。 */
-export function createBrowserTools(host: McpHost): McpToolSpec[] {
+export function createBrowserTools(host: McpHost): ToolSpec[] {
   return [
     tool({
       name: `${TOOL_PREFIX}dom`,
@@ -41,13 +42,14 @@ export function createBrowserTools(host: McpHost): McpToolSpec[] {
         '每个可交互元素带 uid，后续 monospace_act 就用这个 uid。**永远使用最新结果**。' +
         '响应同时给出页面 url 与 title，便于确认自己在哪一页。',
       layer: 'L0',
-      inputSchema: {
-        filePath: z
-          .string()
-          .optional()
-          .describe('把结果写到文件而不是内联返回（页面大时强烈建议）'),
-        verbose: z.boolean().optional().describe('是否带上无障碍树里所有可用信息。默认 false。'),
-      },
+      parameters: Type.Object({
+        filePath: Type.Optional(
+          Type.String({ description: '把结果写到文件而不是内联返回（页面大时强烈建议）' }),
+        ),
+        verbose: Type.Optional(
+          Type.Boolean({ description: '是否带上无障碍树里所有可用信息。默认 false。' }),
+        ),
+      }),
       run: async (input) => {
         const page = await host.browserCurrentPage()
         return host.browserTakeSnapshot(page.pageId, {
@@ -62,13 +64,15 @@ export function createBrowserTools(host: McpHost): McpToolSpec[] {
       title: 'MonoSpace 页面：截图',
       description: '截取当前页面，或按 uid 只截某个元素。',
       layer: 'L0',
-      inputSchema: {
-        uid: uid.optional().describe('只截该元素；不给则截整页视口'),
-        fullPage: z.boolean().optional().describe('截整页（与 uid 互斥）'),
-        format: z.enum(['png', 'jpeg', 'webp']).optional(),
-        quality: z.number().optional().describe('jpeg/webp 压缩质量 0-100'),
-        filePath: z.string().optional().describe('把图存到该路径，而不是内联返回'),
-      },
+      parameters: Type.Object({
+        uid: Type.Optional(Type.String({ description: '只截该元素；不给则截整页视口' })),
+        fullPage: Type.Optional(Type.Boolean({ description: '截整页（与 uid 互斥）' })),
+        format: Type.Optional(
+          Type.Union([Type.Literal('png'), Type.Literal('jpeg'), Type.Literal('webp')]),
+        ),
+        quality: Type.Optional(Type.Number({ description: 'jpeg/webp 压缩质量 0-100' })),
+        filePath: Type.Optional(Type.String({ description: '把图存到该路径，而不是内联返回' })),
+      }),
       run: async (input) => {
         const page = await host.browserCurrentPage()
         const shot = await host.browserTakeScreenshot(page.pageId, {
@@ -96,12 +100,14 @@ export function createBrowserTools(host: McpHost): McpToolSpec[] {
       description:
         '在当前页面里执行一个 JavaScript 函数，结果按 JSON 返回（返回值必须可 JSON 序列化）。' +
         '示例：`() => document.title`、`async () => await fetch("...")`、`(el) => el.innerText`。',
-      inputSchema: {
-        function: z.string().describe('要执行的 JavaScript 函数声明'),
-        args: z.array(z.unknown()).optional().describe('传给该函数的参数列表'),
-        filePath: z.string().optional().describe('把输出写到文件而不是内联返回'),
-        waitForStableDom: z.boolean().optional().describe('是否等 DOM 稳定；只读脚本可传 false'),
-      },
+      parameters: Type.Object({
+        function: Type.String({ description: '要执行的 JavaScript 函数声明' }),
+        args: Type.Optional(Type.Array(Type.Unknown(), { description: '传给该函数的参数列表' })),
+        filePath: Type.Optional(Type.String({ description: '把输出写到文件而不是内联返回' })),
+        waitForStableDom: Type.Optional(
+          Type.Boolean({ description: '是否等 DOM 稳定；只读脚本可传 false' }),
+        ),
+      }),
       run: async (input) => {
         const page = await host.browserCurrentPage()
         return host.browserEvaluateScript(page.pageId, input.function as string, {
@@ -127,33 +133,39 @@ export function createBrowserTools(host: McpHost): McpToolSpec[] {
         '- `scroll`：按 direction 滚动（up/down），可给 amount（像素）\n' +
         '- `goto`：跳转到 url\n' +
         '- `dialog`：处理 alert/confirm/prompt（用 accept 决定接受或取消）',
-      inputSchema: {
-        action: z.enum([
-          'click',
-          'dblclick',
-          'hover',
-          'drag',
-          'fill',
-          'type',
-          'press_key',
-          'upload',
-          'scroll',
-          'goto',
-          'dialog',
+      parameters: Type.Object({
+        action: Type.Union([
+          Type.Literal('click'),
+          Type.Literal('dblclick'),
+          Type.Literal('hover'),
+          Type.Literal('drag'),
+          Type.Literal('fill'),
+          Type.Literal('type'),
+          Type.Literal('press_key'),
+          Type.Literal('upload'),
+          Type.Literal('scroll'),
+          Type.Literal('goto'),
+          Type.Literal('dialog'),
         ]),
-        uid: uid.optional(),
-        toUid: uid.optional().describe('`drag` 的落点元素'),
-        value: z.string().optional().describe('`fill` 要填入的值'),
-        text: z.string().optional().describe('`type` 要键入的文本'),
-        key: z.string().optional().describe('`press_key` 的键；`type` 时作为结束按键'),
-        filePaths: z.array(z.string()).optional().describe('`upload` 的文件路径'),
-        direction: z.enum(['up', 'down']).optional().describe('`scroll` 的方向'),
-        amount: z.number().optional().describe('`scroll` 的像素量，默认 800'),
-        url: z.string().optional().describe('`goto` 的目标 URL'),
-        accept: z.boolean().optional().describe('`dialog`：true 接受，false 取消'),
-        promptText: z.string().optional().describe('`dialog` 且是 prompt 时的回复文本'),
+        uid: Type.Optional(uid),
+        toUid: Type.Optional(Type.String({ description: '`drag` 的落点元素' })),
+        value: Type.Optional(Type.String({ description: '`fill` 要填入的值' })),
+        text: Type.Optional(Type.String({ description: '`type` 要键入的文本' })),
+        key: Type.Optional(Type.String({ description: '`press_key` 的键；`type` 时作为结束按键' })),
+        filePaths: Type.Optional(Type.Array(Type.String(), { description: '`upload` 的文件路径' })),
+        direction: Type.Optional(
+          Type.Union([Type.Literal('up'), Type.Literal('down')], {
+            description: '`scroll` 的方向',
+          }),
+        ),
+        amount: Type.Optional(Type.Number({ description: '`scroll` 的像素量，默认 800' })),
+        url: Type.Optional(Type.String({ description: '`goto` 的目标 URL' })),
+        accept: Type.Optional(Type.Boolean({ description: '`dialog`：true 接受，false 取消' })),
+        promptText: Type.Optional(
+          Type.String({ description: '`dialog` 且是 prompt 时的回复文本' }),
+        ),
         includeSnapshot,
-      },
+      }),
       run: async (input) => {
         const page = await host.browserCurrentPage()
         const pageId = page.pageId
@@ -240,14 +252,15 @@ export function createBrowserTools(host: McpHost): McpToolSpec[] {
         '取当前页面自上次导航以来的错误信息：控制台消息（默认只给 error/warning）与失败的网络请求。' +
         '页面「看起来没反应」时先看这里。',
       layer: 'L0',
-      inputSchema: {
-        types: z
-          .array(z.string())
-          .optional()
-          .describe('控制台消息类型过滤，如 ["error"]、["error","warning"]；不给则用默认'),
-        includeStackTraces: z.boolean().optional(),
-        limit: z.number().int().optional().describe('最多返回多少条，默认 50'),
-      },
+      parameters: Type.Object({
+        types: Type.Optional(
+          Type.Array(Type.String(), {
+            description: '控制台消息类型过滤，如 ["error"]、["error","warning"]；不给则用默认',
+          }),
+        ),
+        includeStackTraces: Type.Optional(Type.Boolean()),
+        limit: Type.Optional(Type.Integer({ description: '最多返回多少条，默认 50' })),
+      }),
       run: async (input) => {
         const page = await host.browserCurrentPage()
         return host.browserErrors(page.pageId, {

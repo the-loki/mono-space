@@ -24,6 +24,8 @@ export function LedgerPage(): JSX.Element {
   const [actionNote, setActionNote] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [busyKeyId, setBusyKeyId] = useState<number | null>(null)
+  const [agentPrompt, setAgentPrompt] = useState('看看当前打开的页面是什么，用一句话告诉我。')
+  const [agentRunning, setAgentRunning] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
 
   const data = useLedgerData(filter)
@@ -117,6 +119,26 @@ export function LedgerPage(): JSX.Element {
     }
   }, [reload])
 
+  // 内置 agent：手动触发一次（工具注入自带 Pi，见 #31 反向决策；不依赖外部 agent）。
+  const handleAgent = useCallback(async () => {
+    setAgentRunning(true)
+    setActionNote('agent 运行中…')
+    try {
+      const result = await window.api.agent.run(agentPrompt)
+      const calls = result.toolCalls.map((c) => `${c.name}${c.ok ? '' : '(失败)'}`).join('、')
+      setActionNote(
+        result.ok
+          ? `agent：${result.text || '(无文本输出)'}${calls ? `｜调用：${calls}` : ''}`
+          : `agent 失败：${result.message}`,
+      )
+      reload()
+    } catch (cause: unknown) {
+      setActionNote(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setAgentRunning(false)
+    }
+  }, [agentPrompt, reload])
+
   // 首次运行引导：打开两个 store 的登录页（登录态落应用私有分区）。
   const handleLogin = useCallback(async () => {
     setActionNote('正在打开 Humble / Epic 登录页…')
@@ -165,6 +187,23 @@ export function LedgerPage(): JSX.Element {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <input
+            type="text"
+            data-testid="ledger-agent-prompt"
+            value={agentPrompt}
+            onChange={(event) => setAgentPrompt(event.target.value)}
+            placeholder="给内置 agent 的指令"
+            className="w-64 rounded bg-slate-900 px-2 py-1 text-slate-200 text-sm placeholder:text-slate-500"
+          />
+          <button
+            type="button"
+            data-testid="ledger-agent-run"
+            disabled={agentRunning || agentPrompt.trim() === ''}
+            onClick={() => void handleAgent()}
+            className="rounded bg-indigo-800 px-2 py-1 text-indigo-50 text-sm hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {agentRunning ? '运行中…' : '内置 agent'}
+          </button>
           <button
             type="button"
             data-testid="ledger-login"

@@ -2,13 +2,13 @@ import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain } from 'electron'
+import { createMcpHost } from './agent/host'
 import { initBrowser } from './browser'
 import { runGpuGuard, STABLE_MS } from './gpu-guard'
+import { registerAgentIpc } from './ipc/agent'
 import { registerLedgerIpc } from './ipc/ledger'
 import { registerSyncIpc } from './ipc/sync'
 import { registerTaskIpc } from './ipc/tasks'
-import { createMcpHost } from './mcp/host'
-import { startMcpServer } from './mcp/server'
 
 // 主进程是 ESM（package.json "type":"module"），没有 __dirname，需自行推导。
 const currentDir = dirname(fileURLToPath(import.meta.url))
@@ -69,16 +69,12 @@ app.whenReady().then(() => {
   // 单条揭示 / 兑换动作（见 #25 / #26）。
   registerTaskIpc()
 
-  // MonoSpace 开放 MCP 服务（见 #31）：外部 agent 用它操作内置浏览器 / 分析台账 / 入库。
-  void startMcpServer({ host: createMcpHost(), userDataDir: app.getPath('userData') })
-    .then((running) => {
-      // 端点（含 token）只写应用私有文件（0600），控制台只提示位置，不打印 token。
-      console.log(`MonoSpace MCP 已启动：${running.endpoint.url.replace(/token=.*/, 'token=***')}`)
-      console.log(`端点文件：${running.endpoint.file}`)
-    })
-    .catch((error: unknown) => {
-      console.error('MonoSpace MCP 启动失败：', error instanceof Error ? error.message : error)
-    })
+  // 内置 agent（用户决策：不再依赖外部 agent，MCP 关掉；工具注入自带 Pi）。
+  // host 惰性创建：它依赖浏览器窗口，首次调用时才建（见 createMcpHost 内部缓存）。
+  registerAgentIpc({
+    userDataDir: app.getPath('userData'),
+    getHost: createMcpHost,
+  })
 
   createWindow()
 

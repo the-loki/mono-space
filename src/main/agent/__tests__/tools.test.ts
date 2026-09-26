@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { extractToken, tokenMatches } from '../server'
-import { createMcpTools, type McpHost, MONOSPACE_TAG, TOOL_PREFIX } from '../tools'
+import { createTools, type McpHost, MONOSPACE_TAG, TOOL_PREFIX } from '../tools'
 
 function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
   return {
@@ -73,20 +72,20 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
 }
 
 function toolNamed(name: string, host: McpHost = fakeHost()) {
-  const tool = createMcpTools(host).find((candidate) => candidate.name === name)
+  const tool = createTools(host).find((candidate) => candidate.name === name)
   if (!tool) throw new Error(`没有工具 ${name}`)
   return tool
 }
 
 describe('命名：全部 monospace_ 前缀（防与其它浏览器 MCP 撞名）', () => {
   it('所有工具都带前缀', () => {
-    for (const tool of createMcpTools(fakeHost())) {
+    for (const tool of createTools(fakeHost())) {
       expect(tool.name.startsWith(TOOL_PREFIX)).toBe(true)
     }
   })
 
   it('浏览器类工具都声明了作用范围（与其它浏览器 MCP 区分）', () => {
-    const tools = createMcpTools(fakeHost())
+    const tools = createTools(fakeHost())
     // 与内置浏览器语义相关的工具（key_page_read 也会驱动内置浏览器，但不带 browser 段）。
     const browserSemantic = [
       `${TOOL_PREFIX}dom`,
@@ -108,7 +107,7 @@ describe('命名：全部 monospace_ 前缀（防与其它浏览器 MCP 撞名�
   })
 
   it('没有裸名工具（如 goto/snapshot/click）', () => {
-    const names = createMcpTools(fakeHost()).map((tool) => tool.name)
+    const names = createTools(fakeHost()).map((tool) => tool.name)
     for (const bare of ['goto', 'snapshot', 'click', 'navigate', 'screenshot']) {
       expect(names).not.toContain(bare)
     }
@@ -117,7 +116,7 @@ describe('命名：全部 monospace_ 前缀（防与其它浏览器 MCP 撞名�
 
 describe('权限分层（#13）', () => {
   it('只读 / 写入 / 不可逆三层各自归位', () => {
-    const tools = createMcpTools(fakeHost())
+    const tools = createTools(fakeHost())
     const layerOf = (name: string) => tools.find((t) => t.name === name)?.layer
     expect(layerOf(`${TOOL_PREFIX}ledger_stats`)).toBe('L0')
     expect(layerOf(`${TOOL_PREFIX}dom`)).toBe('L0')
@@ -127,6 +126,35 @@ describe('权限分层（#13）', () => {
     expect(layerOf(`${TOOL_PREFIX}act`)).toBe('L1')
     expect(layerOf(`${TOOL_PREFIX}key_reveal`)).toBe('L2')
     expect(layerOf(`${TOOL_PREFIX}key_redeem`)).toBe('L2')
+  })
+})
+
+describe('parameters 是合法的 TypeBox 对象（Pi SDK 要求）', () => {
+  it('act / ledger_query 暴露 object 结构，且 optional 键不进 required', () => {
+    const act = toolNamed(`${TOOL_PREFIX}act`).parameters
+    expect(act.type).toBe('object')
+    expect(Object.keys(act.properties)).toContain('action')
+
+    // action 必须是枚举形态：TypeBox 的 union 产出 anyOf（元素带 const），也兼容 enum 写法。
+    const action = act.properties.action as { anyOf?: unknown[]; enum?: unknown[] }
+    const raw = action.anyOf ?? action.enum
+    expect(raw, 'action 应带 anyOf 或 enum').toBeDefined()
+    const values = (raw ?? []).map((entry) =>
+      entry && typeof entry === 'object' && 'const' in entry
+        ? (entry as { const: unknown }).const
+        : entry,
+    )
+    expect(values).toEqual(expect.arrayContaining(['click', 'goto', 'scroll']))
+    // uid 原本是 optional，不能被标成必填。
+    expect(act.required ?? []).not.toContain('uid')
+
+    const query = toolNamed(`${TOOL_PREFIX}ledger_query`).parameters
+    expect(query.type).toBe('object')
+    for (const key of ['view', 'engine', 'limit', 'offset']) {
+      expect(Object.keys(query.properties)).toContain(key)
+    }
+    // limit 原本是 optional，不能被标成必填。
+    expect(query.required ?? []).not.toContain('limit')
   })
 })
 
@@ -236,22 +264,6 @@ describe('工具行为', () => {
   })
 })
 
-describe('token 校验（本地服务的唯一门禁）', () => {
-  it('常量时间比较：正确通过、错误/缺失拒绝', () => {
-    expect(tokenMatches('abc123', 'abc123')).toBe(true)
-    expect(tokenMatches('abc123', 'abc124')).toBe(false)
-    expect(tokenMatches('abc123', 'abc12')).toBe(false)
-    expect(tokenMatches('abc123', null)).toBe(false)
-    expect(tokenMatches('abc123', '')).toBe(false)
-  })
-
-  it('从 query 或 Authorization 头取 token', () => {
-    expect(extractToken('/mcp?token=xyz')).toBe('xyz')
-    expect(extractToken('/mcp', 'Bearer xyz')).toBe('xyz')
-    expect(extractToken('/mcp')).toBeNull()
-  })
-})
-
 describe('脱敏：页面标题里的账号邮箱不能扩散', () => {
   it('标题里的邮箱被打码', async () => {
     const { redactAccountTitle } = await import('../host')
@@ -270,54 +282,15 @@ describe('脱敏：页面标题里的账号邮箱不能扩散', () => {
   })
 })
 
-describe('工具返回形态', () => {
-  it('截图类工具自己给 content 块时不被 JSON 包裹（否则图片会变成文本）', async () => {
-    const { isToolContent } = await import('../server')
-    expect(isToolContent({ content: [{ type: 'image', data: 'x', mimeType: 'image/png' }] })).toBe(
-      true,
-    )
-    expect(isToolContent({ nodeCount: 1 })).toBe(false)
-    expect(isToolContent(null)).toBe(false)
-  })
-
-  it('screenshot 内联时回图片块，落盘时回路径', async () => {
-    const host = fakeHost({
-      browserTakeScreenshot: vi.fn(async () => ({
-        pageId: 1,
-        format: 'png',
-        bytes: 3,
-        data: 'AAAA',
-      })),
-    })
-    const inline = (await toolNamed(`${TOOL_PREFIX}screenshot`, host).run({})) as {
-      content: Array<{ type: string }>
-    }
-    expect(inline.content[0]?.type).toBe('image')
-
-    const saved = fakeHost({
-      browserTakeScreenshot: vi.fn(async () => ({
-        pageId: 1,
-        format: 'png',
-        bytes: 3,
-        path: '/tmp/a.png',
-      })),
-    })
-    const onDisk = await toolNamed(`${TOOL_PREFIX}screenshot`, saved).run({
-      filePath: '/tmp/a.png',
-    })
-    expect(onDisk).toMatchObject({ path: '/tmp/a.png' })
-  })
-})
-
 describe('与真实浏览器 MCP 区分（用户要求强调）', () => {
   it('每一个工具的描述都以【MonoSpace】开头', () => {
-    for (const spec of createMcpTools(fakeHost())) {
+    for (const spec of createTools(fakeHost())) {
       expect(spec.description.startsWith(MONOSPACE_TAG), spec.name).toBe(true)
     }
   })
 
   it('浏览器类工具点名了最容易混淆的对手', () => {
-    const dom = createMcpTools(fakeHost()).find((t) => t.name === `${TOOL_PREFIX}dom`)
+    const dom = createTools(fakeHost()).find((t) => t.name === `${TOOL_PREFIX}dom`)
     expect(dom?.description).toContain('Chrome DevTools MCP')
     expect(dom?.description).toContain('Playwright')
     expect(dom?.description).toContain('不是系统 Chrome')
@@ -326,7 +299,7 @@ describe('与真实浏览器 MCP 区分（用户要求强调）', () => {
   it('作用域声明里的名字与真实浏览器 MCP 不同（避免同名同义误用）', () => {
     // Chrome DevTools MCP 用的是 click / take_snapshot / navigate_page；
     // 我们的是 act / dom / act(goto)——同义不同名，前缀也不同。
-    const names = createMcpTools(fakeHost()).map((t) => t.name)
+    const names = createTools(fakeHost()).map((t) => t.name)
     expect(names).not.toContain('take_snapshot')
     expect(names).not.toContain('navigate_page')
     expect(names).toContain(`${TOOL_PREFIX}dom`)
@@ -335,12 +308,12 @@ describe('与真实浏览器 MCP 区分（用户要求强调）', () => {
 
 describe('工具表完整性', () => {
   it('工具名唯一（重名会让客户端只认到一个，等于悄悄少功能）', () => {
-    const names = createMcpTools(fakeHost()).map((tool) => tool.name)
+    const names = createTools(fakeHost()).map((tool) => tool.name)
     expect(new Set(names).size).toBe(names.length)
   })
 
   it('浏览器接口就 5 个，领域接口 7 个', () => {
-    const tools = createMcpTools(fakeHost())
+    const tools = createTools(fakeHost())
     const browser = tools.filter((tool) => tool.description.includes('不是系统 Chrome'))
     expect(browser).toHaveLength(5)
     expect(tools).toHaveLength(12)
