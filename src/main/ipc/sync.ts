@@ -9,6 +9,7 @@
  */
 import type { Session } from 'electron'
 import { ipcMain } from 'electron'
+import type { SyncIpcResult as SyncIpcContract } from '../../shared/ipc-contract'
 import { getStoreSession } from '../browser/store-session'
 import {
   type FetchLike,
@@ -21,10 +22,13 @@ import { ledgerRepository } from './ledger'
 
 export const SYNC_RUN_CHANNEL = 'sync:run'
 
-/** 同步结果：失败也不抛给渲染进程，而是给结构化的可读原因。 */
-export type SyncIpcResult =
-  | { ok: true; report: SyncReport }
-  | { ok: false; reason: 'not-logged-in' | 'error'; message: string }
+/**
+ * 同步结果：失败也不抛给渲染进程，而是给结构化的可读原因。
+ *
+ * 报告用主进程完整的 `SyncReport`；共享契约把 `Report` 约束到 `SyncSummary`，
+ * 所以「渲染层关心的字段」改名 / 删除会在这里直接编译不过。
+ */
+export type SyncIpcResult = SyncIpcContract<SyncReport>
 
 /**
  * 把 Electron 会话的 fetch 适配成客户端要的窄形状。

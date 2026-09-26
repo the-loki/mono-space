@@ -4,8 +4,9 @@ import type { AgentLogEntry, AgentRunResult, AgentStatus } from '../main/ipc/age
 import type { LedgerExportFormat } from '../main/ipc/ledger'
 import type { SyncIpcResult } from '../main/ipc/sync'
 import type { LoginWindowResult, TaskIpcResult } from '../main/ipc/tasks'
+import type { MonoSpaceApi } from '../shared/ipc-contract'
 
-const api = {
+const api: MonoSpaceApi = {
   ping: (message: string): Promise<string> => ipcRenderer.invoke('ping', message),
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
   ledger: {
@@ -45,7 +46,7 @@ const api = {
   },
 }
 
-export type MonoSpaceApi = typeof api
+export type { MonoSpaceApi } from '../shared/ipc-contract'
 
 if (process.contextIsolated) {
   contextBridge.exposeInMainWorld('api', api)

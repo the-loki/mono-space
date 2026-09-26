@@ -11,6 +11,7 @@
  */
 import { join } from 'node:path'
 import { app, ipcMain } from 'electron'
+import type { LedgerExportFormat } from '../../shared/ipc-contract'
 import { type LedgerRepository, openLedger } from '../data/repository'
 import type { KeyListItem, KeyPage, KeyQuery, OrderSummary } from '../data/types'
 
@@ -19,8 +20,8 @@ export const LEDGER_COUNT_CHANNEL = 'ledger:count'
 export const LEDGER_ORDERS_CHANNEL = 'ledger:orders'
 export const LEDGER_EXPORT_CHANNEL = 'ledger:export'
 
-/** 导出格式，与仓储的导出方法一一对应。 */
-export type LedgerExportFormat = 'json' | 'csv'
+/** 导出格式从共享契约取（渲染层也看得见同一份）。 */
+export type { LedgerExportFormat }
 
 /** 进程级单例：台账只开一个连接。 */
 let repository: LedgerRepository | null = null

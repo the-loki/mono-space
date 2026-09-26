@@ -8,26 +8,10 @@
  * `ledger_query` 的筛选状态等）。本缓冲**仅存内存、不落盘、不写审计**——应用退出即丢，
  * 也刻意**不接入** `appendAudit`（那是另一条持久化链路，不要混）。
  */
+import type { AgentLogEntry, AgentLogKind } from '../../shared/ipc-contract'
 
-/** 单条记录的类别。 */
-export type AgentLogKind = 'run_start' | 'run_end' | 'turn_text' | 'tool'
-
-/** 一条调试记录。 */
-export interface AgentLogEntry {
-  /** 单调递增序号：保证稳定顺序，面板据此排序 / 去重。 */
-  seq: number
-  /** ISO 时间戳（本机时钟）。 */
-  at: string
-  kind: AgentLogKind
-  /** 工具名（仅 tool 条目）。 */
-  tool?: string
-  /** 摘要：工具参数 / prompt / 回合文本 / 最终状态。**参数摘要必然被截断**。 */
-  detail: string
-  /** 工具结果摘要（tool 条目在结束时补上）。 */
-  result?: string
-  /** 是否失败（工具抛错、或运行失败）。 */
-  failed: boolean
-}
+/** 记录形状过 IPC（渲染层读 `window.api.agent.log`），所以放在共享契约里。 */
+export type { AgentLogEntry, AgentLogKind }
 
 /** 缓冲容量：超过丢最旧。500 足够回看一整次会话，又不至于把内存撑大。 */
 export const AGENT_LOG_CAPACITY = 500

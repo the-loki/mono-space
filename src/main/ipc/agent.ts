@@ -5,6 +5,7 @@
  * 台账操作与页面操作，不需要靠对话历史维持上下文。需要多轮对话时再引入常驻会话。
  */
 import { ipcMain } from 'electron'
+import type { AgentRunResult, AgentStatus, AgentToolCall } from '../../shared/ipc-contract'
 import { agentPaths, readAgentConfig } from '../agent/config'
 import { createAgentLogBuffer } from '../agent/log-buffer'
 import { readOrderKeysPrompt, revealKeyPrompt } from '../agent/prompts'
@@ -30,26 +31,8 @@ export type { AgentLogEntry } from '../agent/log-buffer'
  */
 const agentLog = createAgentLogBuffer()
 
-export interface AgentToolCall {
-  name: string
-  /** 工具抛错时记 false（适配器约定：失败抛错，不把错误塞进内容）。 */
-  ok: boolean
-}
-
-export interface AgentRunResult {
-  ok: boolean
-  /** 模型最终文本（无工具调用时就是回答本身）。 */
-  text: string
-  toolCalls: AgentToolCall[]
-  /** 失败原因（配置缺失、模型报错等）。 */
-  message?: string
-}
-
-export interface AgentStatus {
-  /** 配置是否可用；不可用时 UI 该提示去配置而不是让按钮假装能用。 */
-  ready: boolean
-  reason?: string
-}
+/** 这三个形状也过 IPC（渲染层读 `window.api.agent`），所以放在共享契约里。 */
+export type { AgentRunResult, AgentStatus, AgentToolCall }
 
 /** 配置状态。不建会话，只看落盘配置。 */
 export async function agentStatus(userDataDir: string): Promise<AgentStatus> {

@@ -13,6 +13,7 @@
  * 见 `browser/store-urls.ts`；本文件只做通道注册与流程编排。
  */
 import { ipcMain } from 'electron'
+import type { LoginWindowResult, TaskIpcResult } from '../../shared/ipc-contract'
 import { ensureBundledExtensions } from '../browser/bundled-extensions'
 import { getStoreSession } from '../browser/store-session'
 import { EPIC_REDEEM_URL, LOGIN_URLS } from '../browser/store-urls'
@@ -25,14 +26,8 @@ import { ledgerRepository } from './ledger'
 export const TASK_REDEEM_CHANNEL = 'tasks:redeem'
 export const TASK_LOGIN_CHANNEL = 'tasks:login'
 
-/** 打开过的登录窗口（id + 落地 URL + HTTP 状态）。 */
-export interface LoginWindowResult {
-  store: string
-  requestedUrl: string
-  url: string
-  status: number
-  title: string
-}
+/** 登录窗口与动作结果都过 IPC，形状从共享契约取。 */
+export type { LoginWindowResult, TaskIpcResult }
 
 /**
  * 打开 Humble / Epic 的登录页（可见窗口）。
@@ -80,14 +75,6 @@ async function waitForContentScript(
       await sleep(500)
     }
   }
-}
-
-export interface TaskIpcResult {
-  status: string
-  pause?: string
-  code?: string
-  attempts: number
-  note: string
 }
 
 export async function runRedeem(keyId: number): Promise<TaskIpcResult> {
