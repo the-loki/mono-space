@@ -21,6 +21,44 @@ import { ledgerRepository } from './ledger'
 
 export const TASK_REVEAL_CHANNEL = 'tasks:reveal'
 export const TASK_REDEEM_CHANNEL = 'tasks:redeem'
+export const TASK_LOGIN_CHANNEL = 'tasks:login'
+
+/** 两个 store 的登录入口（`docs/spec/14` §7「首次运行引导」）。 */
+export const LOGIN_URLS: Record<string, string> = {
+  humble: 'https://www.humblebundle.com/login',
+  epic: 'https://www.epicgames.com/id/login',
+}
+
+/** 打开过的登录窗口（id + 落地 URL + HTTP 状态）。 */
+export interface LoginWindowResult {
+  store: string
+  requestedUrl: string
+  url: string
+  status: number
+  title: string
+}
+
+/**
+ * 打开 Humble / Epic 的登录页（可见窗口）。
+ *
+ * 登录态落在 `persist:store` 分区，之后的同步（`sync:run`）与揭示/兑换（`tasks:reveal|redeem`）
+ * 都复用同一个分区，所以在这里登录一次即可。
+ */
+async function runLogin(): Promise<LoginWindowResult[]> {
+  const storeSession = getStoreSession()
+  const results: LoginWindowResult[] = []
+  for (const [store, url] of Object.entries(LOGIN_URLS)) {
+    const view = await openStoreView(storeSession, url, { show: true })
+    results.push({
+      store,
+      requestedUrl: url,
+      url: view.url,
+      status: view.status,
+      title: view.title,
+    })
+  }
+  return results
+}
 
 /** Humble 的 key 列表页（揭示入口）。 */
 export const HUMBLE_KEYS_URL = 'https://www.humblebundle.com/home/keys'
@@ -123,4 +161,6 @@ export function registerTaskIpc(): void {
 
   ipcMain.handle(TASK_REVEAL_CHANNEL, (_event, keyId: number) => runReveal(keyId))
   ipcMain.handle(TASK_REDEEM_CHANNEL, (_event, keyId: number) => runRedeem(keyId))
+  ipcMain.removeHandler(TASK_LOGIN_CHANNEL)
+  ipcMain.handle(TASK_LOGIN_CHANNEL, () => runLogin())
 }

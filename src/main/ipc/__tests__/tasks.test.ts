@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EPIC_REDEEM_URL, HUMBLE_KEYS_URL, parseKeyRemoteId } from '../tasks'
+import { EPIC_REDEEM_URL, HUMBLE_KEYS_URL, LOGIN_URLS, parseKeyRemoteId } from '../tasks'
 
 describe('parseKeyRemoteId：从同步写入的 key 标识里还原揭示参数', () => {
   it('`keytype#keyindex` 正常解析', () => {
@@ -26,5 +26,16 @@ describe('动作入口 URL', () => {
   it('揭示走 Humble keys 页，兑换走 Epic 账号兑换页', () => {
     expect(HUMBLE_KEYS_URL).toContain('humblebundle.com')
     expect(EPIC_REDEEM_URL).toBe('https://www.epicgames.com/account/code-redemption')
+  })
+})
+
+describe('登录入口（首次运行引导）', () => {
+  it('两个 store 都有 HTTPS 登录页', () => {
+    expect(Object.keys(LOGIN_URLS).sort()).toEqual(['epic', 'humble'])
+    for (const url of Object.values(LOGIN_URLS)) {
+      expect(url).toMatch(/^https:\/\//)
+    }
+    expect(LOGIN_URLS.humble).toContain('humblebundle.com')
+    expect(LOGIN_URLS.epic).toContain('epicgames.com')
   })
 })

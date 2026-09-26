@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { KeyPage, KeyQuery } from '../main/data/types'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
 import type { SyncIpcResult } from '../main/ipc/sync'
-import type { TaskIpcResult } from '../main/ipc/tasks'
+import type { LoginWindowResult, TaskIpcResult } from '../main/ipc/tasks'
 
 const api = {
   ping: (message: string): Promise<string> => ipcRenderer.invoke('ping', message),
@@ -19,6 +19,8 @@ const api = {
   },
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {
+    /** 打开 Humble / Epic 登录页（登录态落在应用私有分区）。 */
+    login: (): Promise<LoginWindowResult[]> => ipcRenderer.invoke('tasks:login'),
     reveal: (keyId: number): Promise<TaskIpcResult> => ipcRenderer.invoke('tasks:reveal', keyId),
     redeem: (keyId: number): Promise<TaskIpcResult> => ipcRenderer.invoke('tasks:redeem', keyId),
   },

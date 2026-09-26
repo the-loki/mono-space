@@ -78,6 +78,15 @@ export type MonoSpaceSyncResult =
   | { ok: true; report: MonoSpaceSyncSummary & Record<string, unknown> }
   | { ok: false; reason: 'not-logged-in' | 'error'; message: string }
 
+/** 打开的登录窗口。 */
+export interface MonoSpaceLoginWindow {
+  store: string
+  requestedUrl: string
+  url: string
+  status: number
+  title: string
+}
+
 export interface MonoSpaceApi {
   ping(message: string): Promise<string>
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
@@ -92,6 +101,7 @@ export interface MonoSpaceApi {
   }
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {
+    login(): Promise<MonoSpaceLoginWindow[]>
     reveal(keyId: number): Promise<MonoSpaceTaskResult>
     redeem(keyId: number): Promise<MonoSpaceTaskResult>
   }

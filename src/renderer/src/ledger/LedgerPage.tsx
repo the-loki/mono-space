@@ -117,6 +117,21 @@ export function LedgerPage(): JSX.Element {
     }
   }, [reload])
 
+  // 首次运行引导：打开两个 store 的登录页（登录态落应用私有分区）。
+  const handleLogin = useCallback(async () => {
+    setActionNote('正在打开 Humble / Epic 登录页…')
+    try {
+      const windows = await window.api.tasks.login()
+      setActionNote(
+        `已打开 ${windows.length} 个登录窗口（${windows
+          .map((w) => `${w.store} HTTP ${w.status}`)
+          .join('、')}）。登录完成后点「同步」。`,
+      )
+    } catch (cause: unknown) {
+      setActionNote(cause instanceof Error ? cause.message : String(cause))
+    }
+  }, [])
+
   const isEmpty = data.status === 'ready' && data.total === 0
 
   return (
@@ -150,6 +165,14 @@ export function LedgerPage(): JSX.Element {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="ledger-login"
+            onClick={() => void handleLogin()}
+            className="rounded bg-slate-800 px-2 py-1 text-slate-300 text-sm hover:bg-slate-700"
+          >
+            登录
+          </button>
           <button
             type="button"
             data-testid="ledger-sync"
