@@ -108,6 +108,26 @@ export interface MonoSpaceAgentStatus {
   reason?: string
 }
 
+/**
+ * 内置 agent 调试日志的一条记录（仅内存、不落盘；本机排查用）。
+ * 结构须与 `src/main/agent/log-buffer.ts` 的 `AgentLogEntry` 保持一致。
+ */
+export interface MonoSpaceAgentLogEntry {
+  /** 单调递增序号：稳定顺序，最新在前时用它排序 / 去重。 */
+  seq: number
+  /** ISO 时间戳。 */
+  at: string
+  kind: 'run_start' | 'run_end' | 'turn_text' | 'tool'
+  /** 工具名（仅 tool 条目）。 */
+  tool?: string
+  /** 摘要：工具参数 / prompt / 回合文本 / 最终状态（参数摘要已截断）。 */
+  detail: string
+  /** 工具结果摘要（tool 条目在结束时补上）。 */
+  result?: string
+  /** 是否失败。 */
+  failed: boolean
+}
+
 export interface MonoSpaceApi {
   ping(message: string): Promise<string>
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
@@ -124,6 +144,10 @@ export interface MonoSpaceApi {
   agent: {
     status(): Promise<MonoSpaceAgentStatus>
     run(prompt: string): Promise<MonoSpaceAgentRunResult>
+    /** 调试日志快照（最新在前）：仅主进程内存，进程内有效。 */
+    log(): Promise<MonoSpaceAgentLogEntry[]>
+    /** 清空调试日志。 */
+    clearLog(): Promise<void>
   }
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {

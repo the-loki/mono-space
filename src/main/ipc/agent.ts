@@ -6,11 +6,26 @@
  */
 import { ipcMain } from 'electron'
 import { agentPaths, readAgentConfig } from '../agent/config'
+import { createAgentLogBuffer } from '../agent/log-buffer'
 import { createEmbeddedAgent } from '../agent/session'
 import type { McpHost } from '../agent/tools'
 
 export const AGENT_RUN_CHANNEL = 'agent:run'
 export const AGENT_STATUS_CHANNEL = 'agent:status'
+export const AGENT_LOG_CHANNEL = 'agent:log'
+export const AGENT_LOG_CLEAR_CHANNEL = 'agent:log-clear'
+
+/** 面板直接消费的记录形状（定义在纯逻辑模块里）。 */
+export type { AgentLogEntry } from '../agent/log-buffer'
+
+/**
+ * agent 调试日志（本机排查用）。
+ *
+ * 隐私/安全：工具参数里可能含密钥明文（`keys_ingest` 的 `code`、`ledger_query` 的状态等）。
+ * 这里**仅存内存、不落盘、不写审计**——应用退出即丢；`appendAudit` 是另一条持久化链路，
+ * 刻意不接。记录的是「agent 传了什么参数」，不是审计事实。
+ */
+const agentLog = createAgentLogBuffer()
 
 export interface AgentToolCall {
   name: string
@@ -49,27 +64,38 @@ export async function runAgent(options: {
   let text = ''
   let agent: Awaited<ReturnType<typeof createEmbeddedAgent>> | undefined
 
+  agentLog.runStart(options.prompt)
   try {
     agent = await createEmbeddedAgent({ userDataDir: options.userDataDir, host: options.host })
     agent.session.subscribe((event) => {
       if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
         text += event.assistantMessageEvent.delta
+        agentLog.pushTextDelta(event.assistantMessageEvent.delta)
       }
-      if (event.type === 'tool_execution_start') toolCalls.push({ name: event.toolName, ok: true })
-      if (event.type === 'tool_execution_end' && event.isError) {
-        const last = toolCalls[toolCalls.length - 1]
-        if (last && last.name === event.toolName) last.ok = false
+      if (event.type === 'tool_execution_start') {
+        toolCalls.push({ name: event.toolName, ok: true })
+        agentLog.toolStart({ callId: event.toolCallId, tool: event.toolName, args: event.args })
+      }
+      if (event.type === 'tool_execution_end') {
+        if (event.isError) {
+          const last = toolCalls[toolCalls.length - 1]
+          if (last && last.name === event.toolName) last.ok = false
+        }
+        agentLog.toolEnd({
+          callId: event.toolCallId,
+          tool: event.toolName,
+          result: event.result,
+          isError: event.isError,
+        })
       }
     })
     await agent.session.prompt(options.prompt)
+    agentLog.runEnd({ ok: true, detail: text })
     return { ok: true, text, toolCalls }
   } catch (error) {
-    return {
-      ok: false,
-      text,
-      toolCalls,
-      message: error instanceof Error ? error.message : String(error),
-    }
+    const message = error instanceof Error ? error.message : String(error)
+    agentLog.runEnd({ ok: false, detail: message })
+    return { ok: false, text, toolCalls, message }
   } finally {
     agent?.dispose()
   }
@@ -79,8 +105,13 @@ export async function runAgent(options: {
 export function registerAgentIpc(options: { userDataDir: string; getHost: () => McpHost }): void {
   ipcMain.removeHandler(AGENT_RUN_CHANNEL)
   ipcMain.removeHandler(AGENT_STATUS_CHANNEL)
+  ipcMain.removeHandler(AGENT_LOG_CHANNEL)
+  ipcMain.removeHandler(AGENT_LOG_CLEAR_CHANNEL)
   ipcMain.handle(AGENT_RUN_CHANNEL, (_event, prompt: string) =>
     runAgent({ prompt, userDataDir: options.userDataDir, host: options.getHost() }),
   )
   ipcMain.handle(AGENT_STATUS_CHANNEL, () => agentStatus(options.userDataDir))
+  // 最新在前的快照；空数组表示还没跑过（或刚被清空）。
+  ipcMain.handle(AGENT_LOG_CHANNEL, () => agentLog.snapshot())
+  ipcMain.handle(AGENT_LOG_CLEAR_CHANNEL, () => agentLog.clear())
 }

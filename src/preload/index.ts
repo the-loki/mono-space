@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { KeyPage, KeyQuery } from '../main/data/types'
-import type { AgentRunResult, AgentStatus } from '../main/ipc/agent'
+import type { AgentLogEntry, AgentRunResult, AgentStatus } from '../main/ipc/agent'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
 import type { SyncIpcResult } from '../main/ipc/sync'
 import type { LoginWindowResult, TaskIpcResult } from '../main/ipc/tasks'
@@ -22,6 +22,10 @@ const api = {
   agent: {
     status: (): Promise<AgentStatus> => ipcRenderer.invoke('agent:status'),
     run: (prompt: string): Promise<AgentRunResult> => ipcRenderer.invoke('agent:run', prompt),
+    /** 调试日志快照（最新在前）：仅主进程内存，进程内有效。 */
+    log: (): Promise<AgentLogEntry[]> => ipcRenderer.invoke('agent:log'),
+    /** 清空调试日志。 */
+    clearLog: (): Promise<void> => ipcRenderer.invoke('agent:log-clear'),
   },
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {

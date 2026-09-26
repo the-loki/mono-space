@@ -6,6 +6,7 @@
  * 未引入任何依赖。
  */
 import { type JSX, type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AgentLogPanel } from './AgentLogPanel'
 import { type LedgerAction, LedgerRow, LedgerSkeletonRow } from './LedgerRow'
 import { LEDGER_FILTER_LABELS, LEDGER_FILTERS } from './query'
 import type { LedgerExportFormat, LedgerFilter, LedgerListItem } from './types'
@@ -284,6 +285,9 @@ export function LedgerPage(): JSX.Element {
           {actionNote}
         </p>
       )}
+
+      {/* 调试日志：默认折叠，运行中自动低频补拉。 */}
+      <AgentLogPanel running={agentRunning} />
 
       <div
         ref={viewportRef}

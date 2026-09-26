@@ -33,3 +33,6 @@ export type Platform = LedgerListItem['platform']
 
 /** 导出格式。 */
 export type LedgerExportFormat = Parameters<LedgerApi['export']>[0]
+
+/** 内置 agent 调试日志的一条记录（形状从 preload 声明派生，避免两处维护）。 */
+export type AgentLogEntry = Awaited<ReturnType<Window['api']['agent']['log']>>[number]
