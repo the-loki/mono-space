@@ -1,5 +1,11 @@
 import { _electron, expect, test } from '@playwright/test'
 
+/** 渲染进程同步结果的形状（只断言用到的字段）。 */
+interface SyncProbe {
+  ok: boolean
+  reason?: string
+}
+
 /**
  * 同步链路接通性（需要网络，故手动开：`MS_NET_TESTS=1`）。
  *
@@ -19,10 +25,11 @@ test('（手动）台账「同步」按钮经真实 IPC 打到 Humble，未登�
     const page = await app.firstWindow()
     await expect(page.getByTestId('ledger-sync')).toBeVisible({ timeout: 30_000 })
 
-    const result = (await page.evaluate(() => window.api.sync.run())) as {
-      ok: boolean
-      reason?: string
-    }
+    // tsconfig.node 未收录 preload 的 .d.ts，故在页面内做局部类型探针。
+    const result = await page.evaluate(() => {
+      const api = (window as unknown as { api: { sync: { run: () => Promise<SyncProbe> } } }).api
+      return api.sync.run()
+    })
 
     // 没有登录态时必须走「明确的未登录提示」，而不是静默失败或崩掉。
     expect(result.ok).toBe(false)
