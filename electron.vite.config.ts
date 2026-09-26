@@ -7,14 +7,20 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
   },
-  // ESM 主进程 + sandboxed preload 共存：preload 单独输出 cjs（.cjs）。
+  // ESM 主进程 + sandboxed preload 共存：preload 输出 cjs（.cjs）。
   // 注意：不要开 `isolatedEntries`——electron-vite 5 的 isolate-entries 插件在
   // stdout 非 TTY（CI / 管道）时会因 `process.stdout.moveCursor` 不存在而崩。
-  // 单 preload 入口本就不需要它；`externalizeDeps:false` 保证依赖被打进单文件。
+  // 两个 preload 入口彼此不共享本地模块，rollup 不会拆出沙箱加载不了的共享 chunk，
+  // 因此 `externalizeDeps:false` + `.cjs` 输出已足够。
   preload: {
     build: {
       externalizeDeps: false,
       rollupOptions: {
+        // index：应用自身 preload；bridge：store 页面的会话级桥（见 src/preload/bridge.ts）。
+        input: {
+          index: resolve('src/preload/index.ts'),
+          bridge: resolve('src/preload/bridge.ts'),
+        },
         output: {
           format: 'cjs',
           entryFileNames: '[name].cjs',

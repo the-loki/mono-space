@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain } from 'electron'
+import { initBrowser } from './browser'
 
 // 主进程是 ESM（package.json "type":"module"），没有 __dirname，需自行推导。
 const currentDir = dirname(fileURLToPath(import.meta.url))
@@ -33,6 +34,9 @@ function createWindow(): BrowserWindow {
 app.whenReady().then(() => {
   // 最小连通性探针：证明 ESM 主进程 ↔ sandboxed preload ↔ 渲染进程的往返成立。
   ipcMain.handle('ping', (_event, message: string) => `pong:${message}`)
+
+  // store 侧的会话、client hints 与扩展桥（见 docs/adr/0002、#24）。
+  initBrowser()
 
   createWindow()
 

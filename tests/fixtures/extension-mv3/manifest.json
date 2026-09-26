@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "MonoSpace 验证扩展",
+  "version": "1.0",
+  "description": "验证 Electron MV3 扩展装载与通信",
+  "background": { "service_worker": "sw.js" },
+  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle" }]
+}
