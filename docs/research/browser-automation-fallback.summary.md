@@ -7,3 +7,4 @@
 - 表示层：a11y 树为主（CDP `Accessibility.getFullAXTree` ≙ `ariaSnapshot({mode:'ai'})`）+ 定向 DOM + 截图兜底。复用 Stagehand（TS/MIT/`cdpUrl` 一等）或 Playwright MCP（Apache-2.0/可 spawn）；browser-use 是 Python 需 sidecar 且靠云端解盾，与本项目「交人工」立场相反。
 - 人工兜底：显式状态机 + 三级完成信号（页内工具条 IPC / 站点探针 / 导航稳定）+ 恢复时**重快照不重放**；Cloudflare/hCaptcha 一律交人工。Wayland：不靠 `setPosition`/抢焦点，视图内 `setBounds` 与 CDP `Input.*` 不受限。Patchright（4,680★/Apache-2.0/2026-09-13）仅作退路；Skyvern/lightpanda 为 AGPL，勿静态链接。
 - **未验证项 14 项**（§10）：最关键是 `connectOverCDP` 能否驱动 Electron 目标、Electron 内置 Chromium 在 Fab 全程是否被放行、UA/UA-CH 不一致的实际后果。
+- 提交：报告 `5ceb18e`（分支 `research/browser-automation-fallback`，仓库 `the-loki/mono-space`）
