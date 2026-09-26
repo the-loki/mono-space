@@ -1,5 +1,17 @@
 import { BrowserWindow, type Session } from 'electron'
 
+/** 关掉某个 store 会话下已打开的所有窗口（登录窗口也在这个会话里，会被一并收掉）。 */
+export function closeStoreViews(storeSession: Session): number {
+  let closed = 0
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.webContents.session === storeSession) {
+      window.destroy()
+      closed += 1
+    }
+  }
+  return closed
+}
+
 export interface StoreViewResult {
   id: number
   url: string
@@ -14,8 +26,12 @@ export interface StoreViewResult {
 export async function openStoreView(
   storeSession: Session,
   url: string,
-  options: { show?: boolean } = {},
+  options: { show?: boolean; exclusive?: boolean } = {},
 ): Promise<StoreViewResult> {
+  // 过程类页面互斥（`#31` 用户决策）：同步 / 兑换 / 揭示各是一个过程，
+  // 同一时刻只应开一个页面，所以开新页面前把同会话的旧页面关掉。
+  if (options.exclusive) closeStoreViews(storeSession)
+
   const window = new BrowserWindow({
     width: 1100,
     height: 720,

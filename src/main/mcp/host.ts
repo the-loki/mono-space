@@ -9,7 +9,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, type BrowserWindow } from 'electron'
 import { snapshotPageAx } from '../browser/ax-snapshot'
 import type { AxRef } from '../browser/ax-tree'
 import {
@@ -311,14 +311,8 @@ export function createMcpHost(): McpHost {
           '当前没有打开任何 MonoSpace 页面；请先在 App 界面里打开（登录 / 同步等入口）。',
         )
       }
-      const focused = BrowserWindow.getFocusedWindow()
-      const chosen = chooseCurrentPage(pages, {
-        selectedId: getSelectedPageId(),
-        ...(focused ? { focusedId: focused.id } : {}),
-      })
-      if (!chosen) {
-        throw new Error('没能确定要操作哪个 MonoSpace 页面；请把目标窗口点到最前面。')
-      }
+      const chosen = chooseCurrentPage(pages, { selectedId: getSelectedPageId() })
+      if (!chosen) throw new Error('没能确定要操作哪个 MonoSpace 页面。')
       return chosen
     },
 

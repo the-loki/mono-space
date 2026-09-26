@@ -18,17 +18,17 @@ export interface PageCandidate {
 /**
  * 选当前页面：
  * 1. 显式选中的（App 界面设定的）
- * 2. **用户正在看的那个窗口**（焦点所在）
- * 3. 最近打开的那个（列表末尾）——保证「登录完就能马上用」
+ * 2. 最近打开的那个（列表末尾）
+ *
+ * **刻意不用「焦点所在窗口」**：同步与兑换是两个过程，同一时刻只应开一个页面，
+ * 所以「哪个窗口在前台」不该影响判断——那是用户的偶然操作，不是过程状态。
  */
 export function chooseCurrentPage(
   pages: readonly PageCandidate[],
-  context: { selectedId?: number; focusedId?: number } = {},
+  context: { selectedId?: number } = {},
 ): PageCandidate | undefined {
   if (pages.length === 0) return undefined
   const selected = pages.find((page) => page.pageId === context.selectedId)
   if (selected) return selected
-  const focused = pages.find((page) => page.pageId === context.focusedId)
-  if (focused) return focused
   return pages[pages.length - 1]
 }

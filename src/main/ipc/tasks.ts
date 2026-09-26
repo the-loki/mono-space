@@ -122,7 +122,7 @@ export async function runReveal(keyId: number): Promise<TaskIpcResult> {
 
   const storeSession = getStoreSession()
   await ensureBundledExtensions(storeSession)
-  const view = await openStoreView(storeSession, HUMBLE_KEYS_URL, { show: true })
+  const view = await openStoreView(storeSession, HUMBLE_KEYS_URL, { show: true, exclusive: true })
 
   const channel = createWindowCommandChannel(view.id)
   await waitForContentScript(channel, 'reveal-precheck', input)
@@ -143,7 +143,7 @@ export async function runRedeem(keyId: number): Promise<TaskIpcResult> {
 
   const storeSession = getStoreSession()
   await ensureBundledExtensions(storeSession)
-  const view = await openStoreView(storeSession, EPIC_REDEEM_URL, { show: true })
+  const view = await openStoreView(storeSession, EPIC_REDEEM_URL, { show: true, exclusive: true })
 
   const channel = createWindowCommandChannel(view.id)
   await waitForContentScript(channel, 'precheck', { code: detail.redeemCode })
