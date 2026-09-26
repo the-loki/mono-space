@@ -40,41 +40,10 @@ export interface PageInfo {
 }
 
 /** viewport 字符串解析结果。 */
-export interface ParsedViewport {
-  width: number
-  height: number
-  /** 设备像素比；未给出时留给调用方用默认值 1。 */
-  deviceScaleFactor?: number
-  isMobile: boolean
-  hasTouch: boolean
-  isLandscape: boolean
-}
 
 /** `emulate` 的 networkConditions 取值（与 Chrome MCP 的枚举一致）。 */
-export type NetworkConditionsName = 'Offline' | 'Slow 3G' | 'Fast 3G' | 'Slow 4G' | 'Fast 4G'
-
-/** `Network.emulateNetworkConditions` 的参数形状。 */
-export interface NetworkThrottle {
-  offline: boolean
-  latency: number
-  downloadThroughput: number
-  uploadThroughput: number
-}
 
 /** `emulate` 的入参（对齐 Chrome MCP `emulate` 工具的 schema）。 */
-export interface EmulateOptions {
-  colorScheme?: 'dark' | 'light' | 'auto'
-  cpuThrottlingRate?: number
-  /** JSON 字符串；空串表示清除。 */
-  extraHttpHeaders?: string
-  /** `"lat,long"`；空/未给表示清除。 */
-  geolocation?: string
-  networkConditions?: NetworkConditionsName
-  /** 空串表示清除。 */
-  userAgent?: string
-  /** `'<w>x<h>x<dpr>[,mobile][,touch][,landscape]'`。 */
-  viewport?: string
-}
 
 /** `navigatePage` 的入参（对齐 Chrome MCP `navigate_page` 工具的 schema）。 */
 export interface NavigateOptions {
@@ -88,117 +57,18 @@ export interface NavigateOptions {
   handleBeforeUnload?: 'accept' | 'dismiss'
 }
 
-/**
- * 网络限速预设。
- *
- * 数值照抄 Chrome DevTools / Puppeteer 的 `PredefinedNetworkConditions`（含 DevTools 的
- * 校准系数）。注意：上游在 2024 年把旧的「Fast 3G」改名成「Slow 4G」，Puppeteer 为兼容
- * 同时保留两个名字且数值相同——这是上游现状，不是笔误。
- */
-const NETWORK_CONDITIONS: Record<NetworkConditionsName, NetworkThrottle> = {
-  Offline: { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 },
-  'Slow 3G': {
-    offline: false,
-    latency: 400 * 5,
-    downloadThroughput: ((500 * 1000) / 8) * 0.8,
-    uploadThroughput: ((500 * 1000) / 8) * 0.8,
-  },
-  'Fast 3G': {
-    offline: false,
-    latency: 150 * 3.75,
-    downloadThroughput: ((1.6 * 1000 * 1000) / 8) * 0.9,
-    uploadThroughput: ((750 * 1000) / 8) * 0.9,
-  },
-  'Slow 4G': {
-    offline: false,
-    latency: 150 * 3.75,
-    downloadThroughput: ((1.6 * 1000 * 1000) / 8) * 0.9,
-    uploadThroughput: ((750 * 1000) / 8) * 0.9,
-  },
-  'Fast 4G': {
-    offline: false,
-    latency: 60 * 2.75,
-    downloadThroughput: ((9 * 1000 * 1000) / 8) * 0.9,
-    uploadThroughput: ((1.5 * 1000 * 1000) / 8) * 0.9,
-  },
-}
-
 /** 关闭限速：Puppeteer 用 -1/-1 表示「不限速」，语义同 `emulateNetworkConditions(null)`。 */
-export const NETWORK_THROTTLE_DISABLED: NetworkThrottle = {
-  offline: false,
-  latency: 0,
-  downloadThroughput: -1,
-  uploadThroughput: -1,
-}
 
 /**
  * 解析 `'<width>x<height>x<devicePixelRatio>[,mobile][,touch][,landscape]'`。
  * 与 Chrome MCP 的 `viewportTransform` 同语义（宽高必须为正，dpr 可省略）。
  */
-export function parseViewport(input: string): ParsedViewport {
-  const [dimensions, ...tags] = input.split(',')
-  const isMobile = tags.includes('mobile')
-  const hasTouch = tags.includes('touch')
-  const isLandscape = tags.includes('landscape')
-  const [width, height, dpr] = (dimensions ?? '').split('x').map(Number)
-
-  if (!Number.isFinite(width) || width <= 0) {
-    throw new Error(
-      `viewport 宽度无效（"${width}"）：格式应为 '<width>x<height>x<devicePixelRatio>[,mobile][,touch][,landscape]'，宽度必须为正数`,
-    )
-  }
-  if (!Number.isFinite(height) || height <= 0) {
-    throw new Error(`viewport 高度无效（"${height}"）：高度必须为正数`)
-  }
-  if (dpr !== undefined && (!Number.isFinite(dpr) || dpr <= 0)) {
-    throw new Error(`viewport 的 devicePixelRatio 无效（"${dpr}"）：必须为正数`)
-  }
-
-  return { width, height, deviceScaleFactor: dpr, isMobile, hasTouch, isLandscape }
-}
 
 /** 解析 networkConditions 名称；未知名称抛错并列出可选项。 */
-export function parseNetworkConditions(input: NetworkConditionsName): NetworkThrottle {
-  const throttle = NETWORK_CONDITIONS[input]
-  if (!throttle) {
-    throw new Error(
-      `未知的 networkConditions："${input}"；可选：${Object.keys(NETWORK_CONDITIONS).join(' / ')}`,
-    )
-  }
-  // 返回副本：调用方不应能改到共享的预设表。
-  return { ...throttle }
-}
 
 /** 解析 `"lat,long"`；空串/未给返回 undefined（表示清除）。 */
-export function parseGeolocation(
-  input: string,
-): { latitude: number; longitude: number } | undefined {
-  if (input.trim() === '') return undefined
-  const [latitude, longitude] = input.split(',').map(Number)
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
-    throw new Error(`geolocation 纬度无效（"${latitude}"）：必须在 -90 到 90 之间`)
-  }
-  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-    throw new Error(`geolocation 经度无效（"${longitude}"）：必须在 -180 到 180 之间`)
-  }
-  return { latitude, longitude }
-}
 
 /** 解析 extraHttpHeaders 的 JSON 字符串；空串返回 `{}`（表示清除）。 */
-export function parseExtraHttpHeaders(input: string): Record<string, string> {
-  if (input.trim() === '') return {}
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(input)
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`extraHttpHeaders 不是合法 JSON：${detail}`)
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('extraHttpHeaders 必须是 JSON 对象（键值对）')
-  }
-  return parsed as Record<string, string>
-}
 
 /**
  * 页面窗口 = 非默认分区的窗口。
