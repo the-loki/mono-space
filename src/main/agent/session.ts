@@ -24,7 +24,9 @@ import { createTools, type McpHost } from './tools'
 /** 系统提示词。说明作用域与纪律，不夹带任何外部上下文。 */
 export const SYSTEM_PROMPT = `你是 MonoSpace 内置的助手。MonoSpace 是本机上一款管理 Humble Bundle 订单与密钥的桌面应用。
 
-**台账的 key 与资产包只从页面读取**（ADR-0003）：接口只提供订单列表，不提供 key。
+**台账的 key 与资产包只从页面读取**（ADR-0003）：同步接口只提供订单列表。
+你落库之后，**应用自己**会再问一次接口、把页面漏掉的码补上（ADR-0004，**页面永远优先**）——
+这是应用侧的确定性逻辑，不用你管，你也**不要用接口取码**。
 所以「读 key」这件事本身由你来完成：
 
   1) monospace_page_open 打开某单的订单页（https://www.humblebundle.com/downloads?key=<gamekey>）

@@ -3,15 +3,15 @@
  *
  * 与浏览器适配器的分界：这里只碰台账与数据来源（仓储 / 同步 / 兑换 / 订单页入口），
  * 页面状态与快照引用全部归 `host-browser.ts`。ADR-0003 的**唯一落库入口** `keysIngest`
- * 就在这一半。
+ * 就在这一半；它落库后还会合并一次接口补充（ADR-0004，合并逻辑本身是纯函数）。
  */
 import { getStoreSession } from '../browser/store-session'
 import { humbleOrderUrl } from '../browser/store-urls'
 import { openStoreView } from '../browser/store-view'
-import { buildPageOrder } from '../data/page-ingest'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
 import { runRedeem } from '../ipc/tasks'
+import { ingestPageOrder } from '../sync/ingest-page-order'
 import type { AuditLogger } from './host-audit'
 import type { LedgerRow, McpHost, UpsertResult } from './tools'
 
@@ -89,18 +89,28 @@ export function createLedgerHost(audit: AuditLogger): LedgerHost {
     },
 
     /**
-     * 页面读取结果落库（ADR-0003）。
+     * 页面读取结果落库（ADR-0003），并在落库之后**合并一次接口补充**（ADR-0004）。
      *
      * 复用现有持久化入口 `applyOrderSync` —— 页面读取不需要另造一套落库逻辑，
      * 只要把读到的内容构造成 `SyncedOrder` 的形状（构造器是纯函数，见 data/page-ingest.ts）。
+     *
+     * 接线位置就在这一半：合并是**应用侧的确定性逻辑**，不是交给模型决策的东西，
+     * 所以不新开工具、也无需模型判断。顺序由 `ingestPageOrder` 保证：
+     * 页面先落库，接口那趟失败只降级为「没合并」，不抛。
      */
     async keysIngest(read) {
-      const result = repository.applyOrderSync([buildPageOrder(read)])
+      const result = await ingestPageOrder({
+        repository,
+        read,
+        // 真实调用处用 store 会话（与同步 / 揭示一致）。客户端在回调里新建，
+        // 这样「建会话」这一步抛错也落在 ingestPageOrder 的降级里，不会连累页面那份。
+        fetchApiKeys: async (gamekey) => (await createDefaultSyncClient().fetchOrder(gamekey)).keys,
+      })
       await audit({
         at: new Date().toISOString(),
         tool: 'keys_ingest',
         keyIds: [],
-        detail: { order: read.orderGamekey, keys: read.keys.length },
+        detail: { order: read.orderGamekey, keys: read.keys.length, merge: result.merge },
       })
       return result
     },

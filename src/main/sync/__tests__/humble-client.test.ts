@@ -101,3 +101,80 @@ describe('HumbleClient 只读拉取', () => {
     expect((seen[0]?.headers as Record<string, string>).Cookie).toBe('_simpleauth_sess=token')
   })
 })
+
+describe('HumbleClient 订单详情（仅合并那一趟用，ADR-0004）', () => {
+  it('命中 /api/v1/order/<gamekey>?all_tpkds=true 并解析出 key', async () => {
+    const http = createMockHttp(() => ({
+      body: {
+        gamekey: 'abc',
+        tpkd_dict: {
+          all_tpks: [
+            {
+              machine_name: 'foo_softwarebundle',
+              keyindex: 3,
+              key_type: 'steam',
+              human_name: 'Foo 资产',
+              redeemed_key_val: 'AAAA-BBBB',
+            },
+          ],
+        },
+      },
+    }))
+    const client = new HumbleClient({ fetch: http.fetch })
+
+    const detail = await client.fetchOrder('abc')
+
+    expect(http.calls).toEqual(['https://www.humblebundle.com/api/v1/order/abc?all_tpkds=true'])
+    expect(detail).toEqual({
+      gamekey: 'abc',
+      keys: [
+        {
+          machineName: 'foo_softwarebundle',
+          keyIndex: 3,
+          keyType: 'steam',
+          name: 'Foo 资产',
+          code: 'AAAA-BBBB',
+        },
+      ],
+    })
+  })
+
+  it('gamekey 会被 URL 编码（不把特殊字符原样拼进路径）', async () => {
+    const http = createMockHttp(() => ({ body: {} }))
+    const client = new HumbleClient({ fetch: http.fetch })
+
+    await client.fetchOrder('a b/c')
+
+    expect(http.calls[0]).toBe('https://www.humblebundle.com/api/v1/order/a%20b%2Fc?all_tpkds=true')
+  })
+
+  it('顶层 all_tpks 作兜底；缺字段/空串归 null，不编', async () => {
+    const http = createMockHttp(() => ({
+      body: { all_tpks: [{ machine_name: '', redeemed_key_val: '   ' }, 'not-an-object'] },
+    }))
+    const client = new HumbleClient({ fetch: http.fetch })
+
+    const detail = await client.fetchOrder('abc')
+
+    expect(detail.keys).toEqual([
+      { machineName: null, keyIndex: null, keyType: null, name: null, code: null },
+    ])
+  })
+
+  it('详情不是对象时抛 parse 错误码', async () => {
+    const http = createMockHttp(() => ({ body: [] }))
+    const client = new HumbleClient({ fetch: http.fetch })
+
+    await expect(client.fetchOrder('abc')).rejects.toMatchObject({ code: 'parse' })
+  })
+
+  it('详情请求未登录（401）同样抛 unauthorized', async () => {
+    const http = createMockHttp(() => ({ status: 401, body: 'nope' }))
+    const client = new HumbleClient({ fetch: http.fetch })
+
+    await expect(client.fetchOrder('abc')).rejects.toMatchObject({
+      code: 'unauthorized',
+      status: 401,
+    })
+  })
+})
