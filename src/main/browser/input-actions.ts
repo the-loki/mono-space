@@ -203,19 +203,6 @@ export async function clickElement(
 }
 
 /** 在坐标点击（`--experimentalVision` 对应的 `click_at`）。 */
-export async function clickAt(
-  window: BrowserWindow,
-  x: number,
-  y: number,
-  options: { dblClick?: boolean } = {},
-): Promise<void> {
-  const count = options.dblClick ? 2 : 1
-  await mouse(window, 'mouseMoved', x, y, { buttons: 0 })
-  for (let index = 1; index <= count; index += 1) {
-    await mouse(window, 'mousePressed', x, y, { clickCount: index })
-    await mouse(window, 'mouseReleased', x, y, { clickCount: index })
-  }
-}
 
 /** 悬停到元素上。 */
 export async function hoverElement(window: BrowserWindow, backendDOMNodeId: number): Promise<void> {

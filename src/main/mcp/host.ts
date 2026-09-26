@@ -24,11 +24,9 @@ import {
   uploadFile,
 } from '../browser/input-actions'
 import {
-  getCssStyles,
   getNetworkRequest,
   listConsoleMessages,
   listNetworkRequests,
-  getConsoleMessage as readConsoleMessage,
   takeScreenshot,
 } from '../browser/introspection'
 import { getPage, getSelectedPageId, listPages, navigatePage } from '../browser/pages'

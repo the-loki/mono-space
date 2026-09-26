@@ -247,15 +247,6 @@ export function getPage(pageId: number): BrowserWindow {
 }
 
 /** 选中某页作为后续默认页面；bringToFront 时聚焦该窗口。 */
-export function selectPage(pageId: number, options: { bringToFront?: boolean } = {}): PageInfo {
-  const window = getPage(pageId)
-  selectedPageId = window.id
-  if (options.bringToFront) {
-    if (window.isMinimized()) window.restore()
-    window.focus()
-  }
-  return toPageInfo(window, window.id)
-}
 
 /** 当前选中的 pageId（没有显式选过就取最近创建的 store 窗口）。 */
 export function getSelectedPageId(): number | undefined {
@@ -273,35 +264,10 @@ export function getSelectedPageId(): number | undefined {
  * 新建页面（MonoSpace 里就是新开一个 store 窗口）并加载 url。
  * 与 Chrome MCP 一致：新页面会被选中。
  */
-export async function newPage(
-  url: string,
-  options: { background?: boolean; timeout?: number } = {},
-): Promise<PageInfo> {
-  const timeout = options.timeout ?? DEFAULT_NAVIGATION_TIMEOUT
-  const opened = await withTimeout(
-    openStoreView(getStoreSession(), url, { show: !options.background }),
-    timeout,
-    `新建页面超时（${timeout}ms）：${url}`,
-  )
-  selectedPageId = opened.id
-  const window = getPage(opened.id)
-  return toPageInfo(window, opened.id)
-}
 
 /**
  * 关闭页面；**最后一个页面不能关**（照 Chrome MCP 的行为，此时抛错说明原因）。
  */
-export async function closePage(pageId: number): Promise<void> {
-  if (listStoreWindows().length <= 1) {
-    throw new Error(
-      '这是最后一个页面，不能关闭（Chrome MCP：最后一个打开的页面不可关闭，保留它是安全的）',
-    )
-  }
-  const window = getPage(pageId)
-  if (selectedPageId === window.id) selectedPageId = undefined
-  // destroy 不触发 beforeunload，等价于 Chrome MCP 的 `close({runBeforeUnload:false})`。
-  window.destroy()
-}
 
 /**
  * 导航：url / back / forward / reload，可 ignoreCache、可设 timeout、可指定 beforeunload 处理。
@@ -353,38 +319,8 @@ export async function navigatePage(pageId: number, options: NavigateOptions): Pr
 }
 
 /** 等指定文本出现在页面上（任一命中即返回），超时抛错。 */
-export async function waitForText(
-  pageId: number,
-  texts: string[],
-  timeout: number = DEFAULT_TEXT_TIMEOUT,
-): Promise<{ matched: string }> {
-  const window = getPage(pageId)
-  await ensureDomain(window, 'Runtime')
-  const deadline = Date.now() + timeout
-
-  for (;;) {
-    const body = await readBodyText(window)
-    const matched = texts.find((text) => body.includes(text))
-    if (matched !== undefined) return { matched }
-    if (Date.now() >= deadline) {
-      throw new Error(`等待文本超时（${timeout}ms）：${JSON.stringify(texts)} 都没有出现`)
-    }
-    await delay(TEXT_POLL_INTERVAL)
-  }
-}
 
 /** 调整页面尺寸：既改窗口内容尺寸，也覆盖设备度量让页面视口真的变。 */
-export async function resizePage(pageId: number, width: number, height: number): Promise<void> {
-  const window = getPage(pageId)
-  window.setContentSize(Math.round(width), Math.round(height))
-  await cdpSend(window, 'Emulation.setDeviceMetricsOverride', {
-    width: Math.round(width),
-    height: Math.round(height),
-    deviceScaleFactor: 1,
-    mobile: false,
-  })
-  viewportEmulated.add(window)
-}
 
 /**
  * 仿真（对齐 Chrome MCP 的 emulate 工具参数）。
@@ -392,77 +328,6 @@ export async function resizePage(pageId: number, width: number, height: number):
  * 与 Chrome MCP 相同：每次调用都会把**未给出**的项重置为默认（extraHttpHeaders 例外，
  * 只在显式传入时才动）。这样 agent 不必记住上一次设了什么。
  */
-export async function emulate(pageId: number, options: EmulateOptions): Promise<void> {
-  const window = getPage(pageId)
-
-  // 网络限速。
-  await ensureDomain(window, 'Network')
-  const throttle =
-    options.networkConditions === undefined
-      ? NETWORK_THROTTLE_DISABLED
-      : parseNetworkConditions(options.networkConditions)
-  await cdpSend(window, 'Network.emulateNetworkConditions', { ...throttle })
-
-  // CPU 降速；缺省或 1 都表示关闭。
-  await cdpSend(window, 'Emulation.setCPUThrottlingRate', {
-    rate: Math.max(1, options.cpuThrottlingRate ?? 1),
-  })
-
-  // 配色方案；'auto'/缺省 → 空值即恢复系统默认。
-  await cdpSend(window, 'Emulation.setEmulatedMedia', {
-    features: [
-      {
-        name: 'prefers-color-scheme',
-        value: options.colorScheme && options.colorScheme !== 'auto' ? options.colorScheme : '',
-      },
-    ],
-  })
-
-  // 地理位置；空/缺省 → 清除覆盖。
-  const geolocation = parseGeolocation(options.geolocation ?? '')
-  if (geolocation) {
-    await cdpSend(window, 'Emulation.setGeolocationOverride', geolocation)
-  } else {
-    // 未设过时清除是 no-op；个别实现会报错，忽略即可。
-    await cdpSend(window, 'Emulation.clearGeolocationOverride').catch(() => {})
-  }
-
-  // User-Agent；空串/缺省 → 恢复默认。
-  await cdpSend(window, 'Emulation.setUserAgentOverride', { userAgent: options.userAgent ?? '' })
-
-  // 额外请求头；只在显式传入时处理（空串 = 清空）。这是 Chrome MCP 的例外项。
-  if (options.extraHttpHeaders !== undefined) {
-    await ensureDomain(window, 'Network')
-    await cdpSend(window, 'Network.setExtraHTTPHeaders', {
-      headers: parseExtraHttpHeaders(options.extraHttpHeaders),
-    })
-  }
-
-  // 视口；空串/缺省时若之前设过则清除（Chrome MCP 把空串视作「不设视口」）。
-  if (!options.viewport) {
-    if (viewportEmulated.has(window)) {
-      await cdpSend(window, 'Emulation.clearDeviceMetricsOverride').catch(() => {})
-      await cdpSend(window, 'Emulation.setTouchEmulationEnabled', { enabled: false }).catch(
-        () => {},
-      )
-      viewportEmulated.delete(window)
-    }
-    return
-  }
-
-  const viewport = parseViewport(options.viewport)
-  await cdpSend(window, 'Emulation.setDeviceMetricsOverride', {
-    mobile: viewport.isMobile,
-    width: viewport.width,
-    height: viewport.height,
-    deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
-    screenOrientation: viewport.isLandscape
-      ? { angle: 90, type: 'landscapePrimary' }
-      : { angle: 0, type: 'portraitPrimary' },
-  })
-  await cdpSend(window, 'Emulation.setTouchEmulationEnabled', { enabled: viewport.hasTouch })
-  viewportEmulated.add(window)
-}
 
 /**
  * 后退 / 前进。

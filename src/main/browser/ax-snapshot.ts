@@ -80,11 +80,3 @@ export async function snapshotPageAx(
 }
 
 /** 截图（给模型/人看的兜底证据）。 */
-export async function capturePage(
-  window: BrowserWindow,
-  filePath: string,
-): Promise<{ path: string }> {
-  const image = await window.webContents.capturePage()
-  await import('node:fs/promises').then((fs) => fs.writeFile(filePath, image.toPNG()))
-  return { path: filePath }
-}
