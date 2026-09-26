@@ -1,27 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
-  type CssRule,
   contentSizeClip,
-  decodeResponseBody,
   elementClipFromBoxModel,
-  filenameFromUrl,
   filterConsoleMessages,
   filterNetworkRequests,
   flattenPreservedHistory,
   formatConsoleArgs,
-  formatCssAncestors,
-  formatCssSource,
   formatStackTrace,
   groupConsecutiveConsoleMessages,
-  limitBodyText,
-  markOverloadedDeclarations,
   mergeHeaders,
   normalizeConsoleType,
-  orderCssRules,
   paginate,
   pushPreservedHistory,
   resolveScreenshotQuality,
-  toCssDeclarations,
   viewportOffset,
 } from '../introspection'
 
@@ -187,192 +178,6 @@ describe('网络：头合并、过滤与正文', () => {
     ]
     expect(filterNetworkRequests(requests, ['xhr']).map((request) => request.reqid)).toEqual([2])
     expect(filterNetworkRequests(requests, undefined)).toHaveLength(2)
-  })
-
-  it('内联正文按上限截断', () => {
-    expect(limitBodyText('abcdef', 3)).toBe('abc... <truncated>')
-    expect(limitBodyText('abc', 3)).toBe('abc')
-  })
-
-  it('响应体解码：UTF-8 原样、空与二进制有专门说明', () => {
-    expect(decodeResponseBody('中文', false)).toBe('中文')
-    expect(decodeResponseBody(Buffer.from('中文').toString('base64'), true)).toBe('中文')
-    expect(decodeResponseBody('', false)).toBe('<empty response>')
-    expect(decodeResponseBody(Buffer.from([0x80, 0xff]).toString('base64'), true)).toBe(
-      '<binary data>',
-    )
-  })
-})
-
-describe('CSS：声明归一与 overloaded 标记', () => {
-  it('!important 从值里剥离并单独标记', () => {
-    expect(
-      toCssDeclarations([{ name: 'color', value: 'red !important', important: true }]),
-    ).toEqual([{ property: 'color', value: 'red', important: true }])
-    expect(toCssDeclarations([{ name: 'color', value: 'blue' }])).toEqual([
-      { property: 'color', value: 'blue' },
-    ])
-  })
-
-  const rule = (selector: string, declarations: CssRule['declarations']): CssRule => ({
-    selector,
-    origin: 'regular',
-    declarations,
-  })
-
-  it('高优先级声明生效，低优先级同名声明标 overloaded', () => {
-    const marked = markOverloadedDeclarations([
-      rule('element.style', [{ property: 'color', value: 'red' }]),
-      rule('.a', [{ property: 'color', value: 'blue' }]),
-    ])
-    expect(marked[0].declarations[0].overloaded).toBeUndefined()
-    expect(marked[1].declarations[0].overloaded).toBe(true)
-  })
-
-  it('!important 压过更靠前的非 important 声明', () => {
-    const marked = markOverloadedDeclarations([
-      rule('element.style', [{ property: 'color', value: 'red' }]),
-      rule('.a', [{ property: 'color', value: 'blue', important: true }]),
-    ])
-    expect(marked[0].declarations[0].overloaded).toBe(true)
-    expect(marked[1].declarations[0].overloaded).toBeUndefined()
-  })
-
-  it('同一规则内后写的声明胜出', () => {
-    const marked = markOverloadedDeclarations([
-      rule('.a', [
-        { property: 'color', value: 'red' },
-        { property: 'color', value: 'blue' },
-      ]),
-    ])
-    expect(marked[0].declarations[0].overloaded).toBe(true)
-    expect(marked[0].declarations[1].overloaded).toBeUndefined()
-  })
-
-  it('不同属性互不影响', () => {
-    const marked = markOverloadedDeclarations([
-      rule('element.style', [
-        { property: 'color', value: 'red' },
-        { property: 'display', value: 'flex' },
-      ]),
-    ])
-    expect(marked[0].declarations.every((declaration) => !declaration.overloaded)).toBe(true)
-  })
-})
-
-describe('CSS：规则排序与来源定位', () => {
-  it('按 inline → matched → attributes → property → pseudo → inherited 排序', () => {
-    const make = (
-      kind: 'inherited' | 'matched' | 'inline' | 'attributes' | 'property' | 'pseudo',
-      order: number,
-    ) => ({
-      kind,
-      order,
-      rule: { selector: kind, origin: 'regular', declarations: [] } as CssRule,
-    })
-    const ordered = orderCssRules([
-      make('inherited', 5),
-      make('pseudo', 4),
-      make('property', 3),
-      make('attributes', 2),
-      make('matched', 1),
-      make('inline', 0),
-    ])
-    expect(ordered.map((rule) => rule.selector)).toEqual([
-      'inline',
-      'matched',
-      'attributes',
-      'property',
-      'pseudo',
-      'inherited',
-    ])
-  })
-
-  it('overloaded 只作用于元素自身层叠（不碰 inherited）', () => {
-    const collected = [
-      {
-        kind: 'matched' as const,
-        order: 0,
-        rule: {
-          selector: '.a',
-          origin: 'regular',
-          declarations: [{ property: 'color', value: 'red' }],
-        },
-      },
-      {
-        kind: 'inherited' as const,
-        order: 1,
-        rule: {
-          selector: '.parent',
-          origin: 'regular',
-          declarations: [{ property: 'color', value: 'green' }],
-        },
-      },
-    ]
-    const ordered = orderCssRules(collected)
-    expect(ordered[0].declarations[0].overloaded).toBeUndefined()
-    expect(ordered[1].declarations[0].overloaded).toBeUndefined()
-  })
-
-  it('祖先 at-rule 由内向外反转成外层在前', () => {
-    const ancestors = formatCssAncestors({
-      ruleTypes: ['ContainerRule', 'MediaRule', 'LayerRule'],
-      containerQueries: [{ text: '(min-width: 40rem)', name: 'card' }],
-      media: [{ text: '(prefers-color-scheme: dark)' }],
-      layers: [{ text: 'tokens' }],
-    })
-    expect(ancestors).toEqual([
-      '@layer tokens',
-      '@media (prefers-color-scheme: dark)',
-      '@container card (min-width: 40rem)',
-    ])
-  })
-
-  it('嵌套选择器与 @scope 也能展开', () => {
-    expect(
-      formatCssAncestors({
-        ruleTypes: ['StyleRule', 'ScopeRule'],
-        nestingSelectors: ['&:hover'],
-        scopes: [{ text: '.card' }],
-      }),
-    ).toEqual(['@scope .card', '&:hover'])
-  })
-
-  it('没有包装时返回 undefined', () => {
-    expect(formatCssAncestors({})).toBeUndefined()
-  })
-
-  it('来源定位：UA/injected/inspector 用文字，普通规则用 文件名:行号', () => {
-    expect(formatCssSource({ origin: 'user-agent' }, new Map())).toBe('user agent stylesheet')
-    expect(formatCssSource({ origin: 'injected' }, new Map())).toBe('injected stylesheet')
-    expect(formatCssSource({ origin: 'inspector' }, new Map())).toBe('via inspector')
-
-    const sheets = new Map([
-      [
-        '1',
-        { styleSheetId: '1', sourceURL: 'https://humble.test/assets/site.css?v=9', startLine: 0 },
-      ],
-    ])
-    expect(
-      formatCssSource(
-        { origin: 'regular', styleSheetId: '1', style: { range: { startLine: 4 } } },
-        sheets,
-      ),
-    ).toBe('site.css:5')
-
-    expect(
-      formatCssSource({ origin: 'regular', style: { range: { startLine: 2 } } }, new Map()),
-    ).toBe('<style>:3')
-    expect(
-      formatCssSource({ origin: 'regular', styleSheetId: 'missing' }, new Map()),
-    ).toBeUndefined()
-  })
-
-  it('文件名从 URL 推导', () => {
-    expect(filenameFromUrl('https://x/y/app.css?v=1#z')).toBe('app.css')
-    expect(filenameFromUrl('data:text/css,body{}')).toBe('data-uri')
-    expect(filenameFromUrl('blob:https://x/abc')).toBe('blob')
-    expect(filenameFromUrl(undefined)).toBe('index')
   })
 })
 

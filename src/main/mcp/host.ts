@@ -23,12 +23,7 @@ import {
   typeText,
   uploadFile,
 } from '../browser/input-actions'
-import {
-  getNetworkRequest,
-  listConsoleMessages,
-  listNetworkRequests,
-  takeScreenshot,
-} from '../browser/introspection'
+import { listConsoleMessages, listNetworkRequests, takeScreenshot } from '../browser/introspection'
 import { getPage, getSelectedPageId, listPages, navigatePage } from '../browser/pages'
 import { evaluateScript } from '../browser/script'
 import { ledgerRepository } from '../ipc/ledger'
