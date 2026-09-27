@@ -47,6 +47,30 @@ export const MIGRATIONS: readonly Migration[] = [
     // 引擎来自接口的 machine_name 后缀，页面读取的 key 没有它，永远推不出来（ADR-0003）。
     up: (db) => db.exec('ALTER TABLE engine_asset_bundles DROP COLUMN engine'),
   },
+  {
+    version: 4,
+    name: 'absorb-api-supplements',
+    // 数据修复（ADR-0004 修订）：`api:` 补充行若与**同一订单**内某条页面行同码，则已被页面行取代，
+    // 删掉它。重复来自流程顺序：阶段一落库时页面还没码 → 合并先按接口补成 `api:` 行
+    // → 阶段二揭示后才把同一个码写回页面行。只删 `remote_id` 以 `api:` 开头的行，页面行永不删。
+    // 幂等；无脏数据的库（含空库）跑过无副作用。
+    up: (db) =>
+      db.exec(`
+        DELETE FROM keys
+        WHERE substr(remote_id, 1, 4) = 'api:'
+          AND redeem_code IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM keys AS page
+            JOIN engine_asset_bundles AS page_bundle ON page_bundle.id = page.bundle_id
+            JOIN engine_asset_bundles AS api_bundle ON api_bundle.id = keys.bundle_id
+            WHERE page_bundle.order_id = api_bundle.order_id
+              AND page.account_id = keys.account_id
+              AND substr(page.remote_id, 1, 4) <> 'api:'
+              AND page.redeem_code = keys.redeem_code
+          )
+      `),
+  },
 ]
 
 /** 读取当前 schema 版本；schema_version 表不存在时视为 0。 */

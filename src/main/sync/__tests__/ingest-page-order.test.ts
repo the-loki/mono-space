@@ -32,6 +32,13 @@ function codesOf(
   return result
 }
 
+/** 某单里 `api:` 补充行的条数。 */
+function apiRowCount(repository: ReturnType<typeof openLedger>, orderRemoteId = 'ORDER-1'): number {
+  return repository
+    .listKeys({ orderRemoteId, limit: 100 })
+    .items.filter((item) => item.keyRemoteId.startsWith('api:')).length
+}
+
 describe('页面落库 + 接口合并（应用侧确定性逻辑）', () => {
   it('页面先写入，接口只补页面没有的码', async () => {
     const repository = openLedger({ path: ':memory:' })
@@ -118,21 +125,18 @@ describe('页面落库 + 接口合并（应用侧确定性逻辑）', () => {
     expect(second.merge.supplemented).toBe(1)
     repository.close()
   })
-  it('页面后来补读到同一个码：不会再补一条（旧补充行不会自动消失——我们不删行）', async () => {
+  it('页面后来读到同一个码：页面行写入时吸收掉旧的同码补充行（不再重复）', async () => {
     const repository = openLedger({ path: ':memory:' })
 
-    // 1) 页面当时未揭示，接口把码补了进来。
+    // 1) 页面当时未揭示，接口把码补了进来（阶段一落库时页面无码 → 合并先补）。
     await ingestPageOrder({
       repository,
       read: pageRead([{ name: 'Alpha', revealed: false }]),
       fetchApiKeys: async () => [{ machineName: 'alpha', keyIndex: 0, code: 'C' }],
     })
-    const supplementsAfterFirst = repository
-      .listKeys({ orderRemoteId: 'ORDER-1', limit: 100 })
-      .items.filter((item) => item.keyRemoteId.startsWith('api:')).length
-    expect(supplementsAfterFirst).toBe(1)
+    expect(apiRowCount(repository)).toBe(1)
 
-    // 2) 页面重读时已揭示、码与接口一致：同码⇒页面赢，**不再补第二条**。
+    // 2) 页面重读时已揭示、码与接口一致：页面行写入 C ⇒ 吸收同码的 api 行。
     const second = await ingestPageOrder({
       repository,
       read: pageRead([{ name: 'Alpha', revealed: true, code: 'C' }]),
@@ -141,12 +145,33 @@ describe('页面落库 + 接口合并（应用侧确定性逻辑）', () => {
 
     expect(second.merge.supplemented).toBe(0)
     expect(codesOf(repository, 'ORDER-1').alpha).toBe('C')
-    // 旧的补充行不会被删（我们不删任何行），但也不会再长新的——补充行总数仍为 1。
-    expect(
-      repository
-        .listKeys({ orderRemoteId: 'ORDER-1', limit: 100 })
-        .items.filter((item) => item.keyRemoteId.startsWith('api:')).length,
-    ).toBe(1)
+    // 旧的补充行已被页面行取代，库里的同码重复消失（ADR-0004 修订）。
+    expect(apiRowCount(repository)).toBe(0)
+    repository.close()
+  })
+
+  it('合并自己写的补充行不会被吸收逻辑删掉（页面行写码只吸收同码的 api: 行）', async () => {
+    const repository = openLedger({ path: ':memory:' })
+    const result = await ingestPageOrder({
+      repository,
+      read: pageRead([
+        { name: 'Alpha', revealed: true, code: 'PAGE' },
+        { name: 'Beta', revealed: true, code: 'BETA' },
+      ]),
+      fetchApiKeys: async () => [
+        // 同码 ⇒ 页面赢，不会补（也就不会被吸收牵连）。
+        { machineName: 'alpha', keyIndex: 0, code: 'PAGE' },
+        // 页面没有的码 ⇒ 补一条，必须活下来。
+        { machineName: 'beta', keyIndex: 1, code: 'API-ONLY' },
+      ],
+    })
+
+    expect(result.merge).toEqual({ status: 'merged', apiKeys: 2, apiCoded: 2, supplemented: 1 })
+    expect(codesOf(repository, 'ORDER-1')).toEqual({
+      alpha: 'PAGE',
+      beta: 'BETA',
+      'api:beta#1': 'API-ONLY',
+    })
     repository.close()
   })
 })

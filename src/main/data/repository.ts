@@ -12,6 +12,7 @@ import {
 } from 'node:sqlite'
 import { canonicalJson, fingerprintOrders } from './diff'
 import { migrate } from './migrate'
+import { API_SUPPLEMENT_PREFIX } from './page-api-merge'
 import {
   buildLedgerExport,
   ordersToJson,
@@ -88,6 +89,12 @@ const KEY_FROM_JOIN = `
   JOIN engine_asset_bundles b ON b.id = k.bundle_id
   JOIN orders o ON o.id = b.order_id
 `
+
+/**
+ * `api:` 前缀在 SQL 里的判据（GLOB 区分大小写，与 JS 侧 `startsWith(API_SUPPLEMENT_PREFIX)` 一致）。
+ * 页面身份由 `slug()` 产出、只含 `[a-z0-9_]`，永远造不出该前缀 —— 所以这条判据不会误伤页面行。
+ */
+const API_SUPPLEMENT_GLOB = `${API_SUPPLEMENT_PREFIX}*`
 
 /** 默认分页大小。 */
 export const DEFAULT_PAGE_SIZE = 100
@@ -243,8 +250,11 @@ export class LedgerRepository {
    *
    * 新增时状态取传入值或默认值；更新时只覆盖显式传入的状态字段，
    * 因此重复同步不会把已揭示 / 已兑换的状态清回初始值。
+   *
+   * 写码后**吸收同单同码的 `api:` 补充行**（ADR-0004 修订）：返回的 `absorbed` 是被删掉的
+   * 补充行条数。这条在写码路径上做，所以揭示写回（`markRevealed`）与页面重读（本方法）都不会再重复。
    */
-  upsertKey(bundleId: number, key: SyncedKey): { id: number; inserted: boolean } {
+  upsertKey(bundleId: number, key: SyncedKey): { id: number; inserted: boolean; absorbed: number } {
     const now = nowIso()
     const existing = this.stmt(
       'SELECT id FROM keys WHERE account_id = ? AND bundle_id = ? AND remote_id = ?',
@@ -283,7 +293,11 @@ export class LedgerRepository {
         now,
         id,
       )
-      return { id, inserted: false }
+      return {
+        id,
+        inserted: false,
+        absorbed: this.absorbApiSupplements(key.redeemCode),
+      }
     }
 
     const result = this.stmt(
@@ -308,7 +322,12 @@ export class LedgerRepository {
       now,
       now,
     )
-    return { id: Number(result.lastInsertRowid), inserted: true }
+    const id = Number(result.lastInsertRowid)
+    return {
+      id,
+      inserted: true,
+      absorbed: this.absorbApiSupplements(key.redeemCode),
+    }
   }
 
   /** 增量写入一批订单（含包与 key），整体在一个事务里完成。 */
@@ -341,14 +360,24 @@ export class LedgerRepository {
 
   // ------------------------------------------------------------ 状态流转
 
-  /** 标记 key 已揭示，并写入兑换码明文。返回是否命中一行。 */
-  markRevealed(keyId: number, redeemCode: string, revealedAt: string = nowIso()): boolean {
+  /**
+   * 标记 key 已揭示，并写入兑换码明文，再吸收同单同码的 `api:` 补充行（ADR-0004 修订）。
+   * 返回是否命中一行，以及被吸收（删除）的补充行条数。
+   */
+  markRevealed(
+    keyId: number,
+    redeemCode: string,
+    revealedAt: string = nowIso(),
+  ): { hit: boolean; absorbed: number } {
     const result = this.stmt(
       `UPDATE keys
          SET reveal_status = 'revealed', revealed_at = ?, redeem_code = ?, updated_at = ?
        WHERE id = ? AND account_id = ?`,
     ).run(revealedAt, redeemCode, nowIso(), keyId, this.accountId)
-    return Number(result.changes) > 0
+    if (Number(result.changes) === 0) {
+      return { hit: false, absorbed: 0 }
+    }
+    return { hit: true, absorbed: this.absorbApiSupplements(redeemCode) }
   }
 
   /** 更新兑换状态；redeemed 未显式给时间时补当前时间。 */
@@ -574,6 +603,47 @@ export class LedgerRepository {
     }
 
     return { where: conditions.join(' AND '), params }
+  }
+
+  /**
+   * 吸收同单同码的接口补充行（ADR-0004 修订）。
+   *
+   * 判据与 schema v4 迁移**完全一致**：删掉那些 `api:` 行——**同一订单**内已有某条**非 api** 行
+   * 持有同一个码（也就是「这个码已经被页面行取代」）。
+   * - **只删 `api:` 行**（`remote_id` 前缀是唯一判据；页面身份永远造不出该前缀），页面行永不删；
+   * - **作用域是同一订单**（同一 `order_id`）：合并与揭示都以「单」为单位发生，
+   *   收紧到同一资产包会漏掉「补充行与页面行分属不同包」的历史 / 导入数据；
+   * - **写码顺序无关**：页面行先写、补充行后写（如同步导入老台账），后写的补充行也会被吸收；
+   * - **合并自己写的补充行不会被删**：合并只补页面没有的码，`EXISTS` 找不到同码页面行 ⇒ 不匹配；
+   * - 幂等：码已被吸收过，再写一次删 0 条。
+   *
+   * 在 `upsertKey` / `markRevealed` 写码之后调用。返回删除条数，供上层记审计或忽略。SQL 走 `stmt()` 闸门。
+   *
+   * ponytail: `redeem_code` 无索引，这里按 (account_id, redeem_code) 扫表；台账是千级规模，无感。
+   * 到万级以上再追加迁移建 `idx_keys_redeem_code`。
+   */
+  private absorbApiSupplements(code: string | null | undefined): number {
+    const trimmed = (code ?? '').trim()
+    if (!trimmed) {
+      return 0
+    }
+    const result = this.stmt(
+      `DELETE FROM keys
+         WHERE account_id = ?
+           AND redeem_code = ?
+           AND remote_id GLOB ?
+           AND EXISTS (
+             SELECT 1
+             FROM keys AS page
+             JOIN engine_asset_bundles AS page_bundle ON page_bundle.id = page.bundle_id
+             JOIN engine_asset_bundles AS api_bundle ON api_bundle.id = keys.bundle_id
+             WHERE page_bundle.order_id = api_bundle.order_id
+               AND page.account_id = keys.account_id
+               AND page.remote_id NOT GLOB ?
+               AND page.redeem_code = keys.redeem_code
+           )`,
+    ).run(this.accountId, trimmed, API_SUPPLEMENT_GLOB, API_SUPPLEMENT_GLOB)
+    return Number(result.changes)
   }
 
   private stmt(sql: string): GatedStatement {

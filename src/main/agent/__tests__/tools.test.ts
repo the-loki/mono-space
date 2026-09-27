@@ -56,7 +56,7 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
     browserEvaluateScript: vi.fn(async () => ({ value: 1 })),
     browserErrors: vi.fn(async () => ({ pageId: 1, url: 'u', errors: [], failedRequests: [] })),
     ordersSync: vi.fn(async () => ({ ok: true })),
-    keysUpsert: vi.fn(async () => ({ written: 1, auditId: 'a#1' })),
+    keysUpsert: vi.fn(async () => ({ written: 1, absorbed: 0, auditId: 'a#1' })),
     keysIngest: vi.fn(async () => ({ orders: {}, bundles: {}, keys: {} })),
     keyOpen: vi.fn(async (keyId: number) => ({
       ok: true as const,

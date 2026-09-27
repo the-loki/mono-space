@@ -34,6 +34,8 @@ export interface LedgerRow {
 /** 写入结果（含留痕）。 */
 export interface UpsertResult {
   written: number
+  /** 写入页面行的码时吸收掉（删除）的同单同码 `api:` 补充行条数（ADR-0004 修订）。 */
+  absorbed: number
   auditId: string
 }
 

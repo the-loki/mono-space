@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { assertStatementArity, openLedger } from '../repository'
-import type { SyncedOrder } from '../types'
+import type { SyncedKey, SyncedOrder } from '../types'
 
 /** 造一条含两个 key 的订单。 */
 function sampleOrder(): SyncedOrder {
@@ -222,6 +222,205 @@ describe('SQL 占位符 / 实参一致性闸门', () => {
 
   it('数量相等时放行', () => {
     expect(() => assertStatementArity('SELECT ?, ? FROM t WHERE id = ?', [1, 2, 3])).not.toThrow()
+  })
+})
+
+/** 某单在库里的 key 身份（排序后），吸收测试只关心「谁还在」。 */
+function remoteIds(repo: ReturnType<typeof openLedger>, orderRemoteId = 'ORDER-1'): string[] {
+  return repo
+    .listKeys({ orderRemoteId, limit: 100 })
+    .items.map((item) => item.keyRemoteId)
+    .sort()
+}
+
+/**
+ * 「页面行 + 接口补充行」同单并存的现场（ADR-0004 修订要测的吸收）。
+ *
+ * 页面行 alpha 未揭示无码，同单另有持有码 C 的 `api:alpha#0` —— 这正是真实缺陷的形态：
+ * 合并跑在揭示之前，先把码补成 api 行；阶段二揭示后才把同一个码写进页面行。
+ */
+function pageWithApiDuplicate(extra: SyncedKey[] = []): SyncedOrder {
+  return {
+    remoteId: 'ORDER-1',
+    bundles: [
+      {
+        remoteId: 'order_1_page',
+        keys: [
+          { remoteId: 'alpha', name: 'Alpha' },
+          {
+            remoteId: 'api:alpha#0',
+            name: 'Alpha（接口）',
+            redeemCode: 'C',
+            revealStatus: 'revealed',
+          },
+          ...extra,
+        ],
+      },
+    ],
+  }
+}
+
+describe('吸收同单同码的接口补充行（ADR-0004 修订）', () => {
+  it('揭示写入页面行的码时，删掉同单同码的 api: 行，页面行留下并带上码', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([pageWithApiDuplicate()])
+    const alpha = repo
+      .listKeys({ orderRemoteId: 'ORDER-1' })
+      .items.find((item) => item.keyRemoteId === 'alpha')
+
+    const result = repo.markRevealed(alpha?.id as number, 'C')
+
+    expect(result).toEqual({ hit: true, absorbed: 1 })
+    expect(remoteIds(repo)).toEqual(['alpha'])
+    expect(repo.getKey(alpha?.id as number)?.redeemCode).toBe('C')
+    repo.close()
+  })
+
+  it('页面重读把同码写回页面行时也吸收（upsertKey 路径，不只揭示路径）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([pageWithApiDuplicate()])
+    const alpha = repo
+      .listKeys({ orderRemoteId: 'ORDER-1' })
+      .items.find((item) => item.keyRemoteId === 'alpha')
+
+    // 页面重读：alpha 现在已揭示、读到与接口相同的码 C。
+    repo.applyOrderSync([
+      {
+        remoteId: 'ORDER-1',
+        bundles: [
+          {
+            remoteId: 'order_1_page',
+            keys: [{ remoteId: 'alpha', name: 'Alpha', revealStatus: 'revealed', redeemCode: 'C' }],
+          },
+        ],
+      },
+    ])
+
+    expect(remoteIds(repo)).toEqual(['alpha'])
+    expect(repo.getKey(alpha?.id as number)?.redeemCode).toBe('C')
+    repo.close()
+  })
+
+  it('不误删：同单里码不同的 api 行仍在，别的单里同码的 api 行也仍在', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      pageWithApiDuplicate([
+        { remoteId: 'api:z#0', name: 'Z', redeemCode: 'OTHER', revealStatus: 'revealed' },
+      ]),
+      {
+        remoteId: 'ORDER-2',
+        bundles: [
+          {
+            remoteId: 'order_2_page',
+            keys: [
+              {
+                remoteId: 'api:alpha#0',
+                name: '别单的同码补充行',
+                redeemCode: 'C',
+                revealStatus: 'revealed',
+              },
+            ],
+          },
+        ],
+      },
+    ])
+    const alpha = repo
+      .listKeys({ orderRemoteId: 'ORDER-1' })
+      .items.find((item) => item.keyRemoteId === 'alpha')
+
+    repo.markRevealed(alpha?.id as number, 'C')
+
+    // 作用域是同一单：别的单里码同为 C 的 api 行不受影响。
+    expect(remoteIds(repo, 'ORDER-1')).toEqual(['alpha', 'api:z#0'])
+    expect(remoteIds(repo, 'ORDER-2')).toEqual(['api:alpha#0'])
+    repo.close()
+  })
+
+  it('只删 api: 行：同单里码相同的两条 api 行都被吸收，页面行一条不动', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      {
+        remoteId: 'ORDER-1',
+        bundles: [
+          {
+            remoteId: 'order_1_page',
+            keys: [
+              { remoteId: 'alpha', name: 'Alpha' },
+              { remoteId: 'beta', name: 'Beta' },
+              { remoteId: 'api:a#0', redeemCode: 'C', revealStatus: 'revealed' },
+              { remoteId: 'api:b#0', redeemCode: 'C', revealStatus: 'revealed' },
+            ],
+          },
+        ],
+      },
+    ])
+    const alpha = repo
+      .listKeys({ orderRemoteId: 'ORDER-1' })
+      .items.find((item) => item.keyRemoteId === 'alpha')
+
+    const result = repo.markRevealed(alpha?.id as number, 'C')
+
+    expect(result.absorbed).toBe(2)
+    expect(remoteIds(repo)).toEqual(['alpha', 'beta'])
+    repo.close()
+  })
+
+  it('写码顺序无关：补充行若晚于同码页面行写入，也会被吸收（同步导入老台账也不会留重复）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      {
+        remoteId: 'ORDER-1',
+        bundles: [
+          {
+            remoteId: 'order_1_page',
+            keys: [
+              { remoteId: 'alpha', revealStatus: 'revealed', redeemCode: 'C' },
+              { remoteId: 'api:alpha#0', revealStatus: 'revealed', redeemCode: 'C' },
+            ],
+          },
+        ],
+      },
+    ])
+
+    expect(remoteIds(repo)).toEqual(['alpha'])
+    repo.close()
+  })
+
+  it('幂等：同一个码连写两次结果一致、不报错、不再删别的', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([pageWithApiDuplicate()])
+    const alpha = repo
+      .listKeys({ orderRemoteId: 'ORDER-1' })
+      .items.find((item) => item.keyRemoteId === 'alpha')
+
+    expect(repo.markRevealed(alpha?.id as number, 'C').absorbed).toBe(1)
+    const afterFirst = remoteIds(repo)
+
+    expect(repo.markRevealed(alpha?.id as number, 'C')).toEqual({ hit: true, absorbed: 0 })
+    expect(remoteIds(repo)).toEqual(afterFirst)
+    repo.close()
+  })
+
+  it('合并自己写的补充行不会被吸收逻辑删掉（页面行写码只吸收同码的 api: 行）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    // 页面 alpha 有码 PAGE，接口给的是另一个码 API-ONLY ⇒ 补一条，且必须活下来。
+    repo.applyOrderSync([
+      {
+        remoteId: 'ORDER-1',
+        bundles: [
+          {
+            remoteId: 'order_1_page',
+            keys: [
+              { remoteId: 'alpha', revealStatus: 'revealed', redeemCode: 'PAGE' },
+              { remoteId: 'api:beta#1', revealStatus: 'revealed', redeemCode: 'API-ONLY' },
+            ],
+          },
+        ],
+      },
+    ])
+
+    expect(remoteIds(repo)).toEqual(['alpha', 'api:beta#1'])
+    repo.close()
   })
 })
 

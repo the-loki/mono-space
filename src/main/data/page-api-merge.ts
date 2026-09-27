@@ -19,7 +19,8 @@
  * 选页面意味着台账可能记到与接口不一致的值（ADR-0004）。
  *
  * 另一个已知边：若页面先没读到码、接口把它补了进来，之后页面又读到**同一个码**，
- * 本条不新增第二条（同码 ⇒ 页面赢），但旧的补充行也不会被删（本模块不删任何行）。
+ * 本条不新增第二条（同码 ⇒ 页面赢）；旧的补充行由**落库层**在页面行写入该码时吸收掉
+ * （见 `repository.ts` 的同单吸收与 ADR-0004 的修订）——本模块仍是纯函数，自己不删任何行。
  */
 import { buildPageOrder, type PageOrderRead, pageBundleRemoteId, slug } from './page-ingest'
 import type { SyncedKey, SyncedOrder } from './types'

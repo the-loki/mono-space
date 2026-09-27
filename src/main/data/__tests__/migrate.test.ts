@@ -16,6 +16,52 @@ function listTables(db: DatabaseSync): string[] {
   return rows.map((row) => row.name).sort()
 }
 
+const SEED_TIME = '2026-01-01T00:00:00.000Z'
+
+/** 往某个已建表的库里塑一条订单，返回 id。 */
+function seedOrder(db: DatabaseSync, remoteId: string): number {
+  const result = db
+    .prepare(
+      `INSERT INTO orders (account_id, remote_id, first_seen_at, last_seen_at, created_at, updated_at)
+       VALUES ('default', ?, ?, ?, ?, ?)`,
+    )
+    .run(remoteId, SEED_TIME, SEED_TIME, SEED_TIME, SEED_TIME)
+  return Number(result.lastInsertRowid)
+}
+
+/** 往某个订单下塑一个资产包，返回 id。 */
+function seedBundle(db: DatabaseSync, orderId: number, remoteId: string): number {
+  const result = db
+    .prepare(
+      `INSERT INTO engine_asset_bundles (account_id, order_id, remote_id, created_at, updated_at)
+       VALUES ('default', ?, ?, ?, ?)`,
+    )
+    .run(orderId, remoteId, SEED_TIME, SEED_TIME)
+  return Number(result.lastInsertRowid)
+}
+
+/** 往某个资产包下塑一条 key。 */
+function seedKey(
+  db: DatabaseSync,
+  bundleId: number,
+  remoteId: string,
+  redeemCode: string | null,
+): void {
+  db.prepare(
+    `INSERT INTO keys
+       (account_id, bundle_id, remote_id, reveal_status, redeem_status, redeem_code, created_at, updated_at)
+     VALUES ('default', ?, ?, 'revealed', 'not_redeemed', ?, ?, ?)`,
+  ).run(bundleId, remoteId, redeemCode, SEED_TIME, SEED_TIME)
+}
+
+/** 列出库里的全部 key 身份（排序后）。 */
+function keyRemoteIds(db: DatabaseSync): string[] {
+  const rows = db.prepare('SELECT remote_id FROM keys ORDER BY remote_id').all() as Array<{
+    remote_id: string
+  }>
+  return rows.map((row) => row.remote_id)
+}
+
 describe('迁移', () => {
   it('首次迁移建出全部台账表并记录版本', () => {
     const db = memoryDb()
@@ -79,6 +125,51 @@ describe('迁移', () => {
 
     const again = migrate(db, custom)
     expect(again.applied).toEqual([])
+    db.close()
+  })
+
+  it('v4 清掉「同单内码已被页面行持有」的 api: 行，保留页面行与真正独有的补充行', () => {
+    const db = memoryDb()
+    // 先升到 v3（v4 之前的历史 schema），再塑上真实缺陷形态的数据。
+    migrate(db, MIGRATIONS.slice(0, 3))
+
+    // 单 1：页面 alpha(C) + 重复 api:a#0(C) + 真正独有的 api:x#0(ONLY)。
+    const order1 = seedOrder(db, 'ORDER-1')
+    const bundle1 = seedBundle(db, order1, 'order_1_page')
+    seedKey(db, bundle1, 'alpha', 'C')
+    seedKey(db, bundle1, 'api:a#0', 'C')
+    seedKey(db, bundle1, 'api:x#0', 'ONLY')
+
+    // 单 2：页面 beta(D) + 重复 api:b#0(D) + 与别单同码的 api:c#0(C)（作用域是同一单 ⇒ 保留）。
+    const order2 = seedOrder(db, 'ORDER-2')
+    const bundle2 = seedBundle(db, order2, 'order_2_page')
+    seedKey(db, bundle2, 'beta', 'D')
+    seedKey(db, bundle2, 'api:b#0', 'D')
+    seedKey(db, bundle2, 'api:c#0', 'C')
+
+    // 单 3：只有一条页面确实没有的码的补充行 ⇒ 保留。
+    const order3 = seedOrder(db, 'ORDER-3')
+    const bundle3 = seedBundle(db, order3, 'order_3_page')
+    seedKey(db, bundle3, 'api:y#0', 'E')
+
+    const result = migrate(db)
+    expect(result.from).toBe(3)
+    expect(result.applied).toEqual([4])
+    expect(currentSchemaVersion(db)).toBe(4)
+    expect(keyRemoteIds(db)).toEqual(['alpha', 'api:c#0', 'api:x#0', 'api:y#0', 'beta'])
+
+    // 幂等：再跑一次没有任何变化。
+    const again = migrate(db)
+    expect(again.applied).toEqual([])
+    expect(keyRemoteIds(db)).toEqual(['alpha', 'api:c#0', 'api:x#0', 'api:y#0', 'beta'])
+    db.close()
+  })
+
+  it('v4 对没有重复补充行的库无副作用（空库也安全）', () => {
+    const db = memoryDb()
+    migrate(db)
+    expect(currentSchemaVersion(db)).toBe(4)
+    expect(keyRemoteIds(db)).toEqual([])
     db.close()
   })
 

@@ -118,9 +118,14 @@ export function createLedgerHost(audit: AuditLogger): LedgerHost {
     async keysUpsert(entries): Promise<UpsertResult> {
       const at = new Date().toISOString()
       let written = 0
+      let absorbed = 0
       for (const entry of entries) {
         if (entry.revealed && entry.code) {
-          if (repository.markRevealed(entry.keyId, entry.code)) written += 1
+          const result = repository.markRevealed(entry.keyId, entry.code)
+          if (result.hit) {
+            written += 1
+            absorbed += result.absorbed
+          }
         }
       }
       const auditId = await audit({
@@ -128,8 +133,9 @@ export function createLedgerHost(audit: AuditLogger): LedgerHost {
         tool: 'keys_upsert',
         keyIds: entries.map((entry) => entry.keyId),
         written,
+        absorbed,
       })
-      return { written, auditId }
+      return { written, absorbed, auditId }
     },
 
     /**
