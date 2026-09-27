@@ -116,16 +116,39 @@ e2e 明细：client hints 注入 ✓ · MV3 扩展装载+热替换 ✓ · 订单
 > 审计是**只读**的（未改文件、未跑测试）；其结论我按「确证 / 推测」复核，抽查项与它一致。
 > 它也修正了我一个前提：`src/shared/ipc-contract.ts` 是**纯类型文件**，里面没有通道字符串。
 
-## 5. 明确没有验证到的（诚实边界）
+## 5. 打包层（本次已跑）
+
+`pnpm build:linux` → `dist/MonoSpace-0.1.0.AppImage`，**143.8 MB**，electron-builder 26.16.1 /
+Electron **44.4.5**（符合版本红线）。
+
+**不是只看「构建成功」—— 产物真跑了**（临时 `MS_LEDGER_DB`，不碰真实台账）：
+
+```
+渲染页从 asar 内加载：file:///tmp/.mount_MonoSp…/resources/app.asar/out/renderer/index.html
+品牌条可见、空台账空态可渲染、window.api.ping 往返 = pong:hello ⇒ 打包内 preload 桥正常
+临时库迁移链跑到 schema_version = 5
+asar 头解析：renderer/index.html ✓、renderer/debug.html ✓、out/main/index.js ✓、
+            out/preload/index.cjs + bridge.cjs ✓（sandboxed preload 产的是 .cjs，不是 .js）
+已删代码无残留：redeem/flow、page-driver、extension-mv3、bundled-extensions 均 0 处
+               （`content.js` 的命中全在 node_modules/openai 里）
+```
+
+**发现一个打磨缺口（未修）**：`default Electron icon is used  reason=application icon is not set` ——
+应用没有设图标，AppImage 里是 Electron 默认图标。不影响功能，但属于「精致」范围。
+
+electron-builder 另报了 `missing optional dependencies [@esbuild/*]`：pnpm 10+ 不自动装传递平台二进制；
+这些是**构建期**依赖，运行期不用，实测产物可跑，故无害。
+
+## 6. 明确没有验证到的（诚实边界）
 
 1. **真实兑换（不可逆、消耗密钥）**：代理驱动的兑换只过单测，**从未真跑** —— 需要一个可牺牲的密钥。
 2. **两条 e2e 手动用例**（未登录出网 / 同步未登录提示）默认 `skip`；需要 `MS_NET_TESTS=1` 且会真出网。
 3. **登录流程**（`tasks:login` 打开 Humble / Epic 可见登录窗）无测试、本次未跑（会动到登录态）。
-4. **打包（AppImage）**未在本次跑（`pnpm build:linux`）；`docs/verify/17` 有历史记录。
-5. **48 条未揭示里到底有多少是「无法揭示」**未逐一核对 —— 只确证了 `ErUyuaeeuShZpB8Z` 的 4 条是这一类。
-6. **agent 任务的判定质量**（平台逐行判断、是否漏读行）只在少数单上观测过，不能外推。
+4. **48 条未揭示里到底有多少是「无法揭示」**未逐一核对 —— 只确证了 `ErUyuaeeuShZpB8Z` 的 4 条是这一类。
+5. **agent 任务的判定质量**（平台逐行判断、是否漏读行）只在少数单上观测过，不能外推。
+6. AppImage 只验证了**本机可跑**，未在其他发行版/无 FUSE 环境验证；也未验证自动更新（`app-update.yml` 已生成但无发布源）。
 
-## 6. 方法
+## 7. 方法
 
 - 自动化：`pnpm typecheck` / `pnpm lint` / `pnpm test:unit` / `pnpm build` / `DISPLAY=:0 pnpm test:e2e`。
 - 真实遍历：`/tmp/accept.sh`（Electron + `--remote-debugging-port` + `agent-browser` 驱动真实窗口与真实页面；
