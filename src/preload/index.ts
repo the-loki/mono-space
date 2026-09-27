@@ -4,7 +4,7 @@ import type { AgentRunResult, AgentStatus } from '../main/ipc/agent'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
 import type { SyncIpcResult } from '../main/ipc/sync'
 import type { LoginWindowResult } from '../main/ipc/tasks'
-import type { AgentLogSnapshot, MonoSpaceApi } from '../shared/ipc-contract'
+import type { AgentLogSnapshot, LedgerExportSaveResult, MonoSpaceApi } from '../shared/ipc-contract'
 
 const api: MonoSpaceApi = {
   ping: (message: string): Promise<string> => ipcRenderer.invoke('ping', message),
@@ -30,7 +30,8 @@ const api: MonoSpaceApi = {
     count: (query: KeyQuery = {}): Promise<number> => ipcRenderer.invoke('ledger:count', query),
     /** 订单主视图：全部订单 + 各自的 key 计数。 */
     orders: (): Promise<OrderSummary[]> => ipcRenderer.invoke('ledger:orders'),
-    export: (format: LedgerExportFormat, query: KeyQuery = {}): Promise<string> =>
+    /** 导出并落盘：主进程弹保存对话框；`saved: false` 表示用户取消（不是错误）。 */
+    export: (format: LedgerExportFormat, query: KeyQuery = {}): Promise<LedgerExportSaveResult> =>
       ipcRenderer.invoke('ledger:export', format, query),
   },
   /** 只读同步：拉 Humble 订单并增量入库。 */

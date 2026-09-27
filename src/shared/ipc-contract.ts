@@ -229,6 +229,14 @@ export interface LoginWindowResult {
  * preload 实现（`src/preload/index.ts`）用本接口标注 `api` 对象，`.d.ts` 又把同一接口
  * 挂到 `Window` 上；两者同源，方法面漂移会在实现侧直接编译不过。
  */
+/**
+ * 导出落盘结果：**用户取消不是错误**（`saved: false`，什么都没写）。
+ *
+ * 为什么不是「返回文本」：导出的文本原先只交给渲染层用了长度（`docs/verify/33-full-test.md` §0
+ * 问题 1：499077 字符的 JSON 算完就被丢掉），用户拿不到任何文件。现在由主进程弹保存对话框写盘。
+ */
+export type LedgerExportSaveResult = { saved: true; path: string } | { saved: false }
+
 export interface MonoSpaceApi {
   ping(message: string): Promise<string>
   /**
@@ -258,7 +266,7 @@ export interface MonoSpaceApi {
     count(query?: KeyQuery): Promise<number>
     /** 订单主视图：全部订单 + 各自的 key 计数。 */
     orders(): Promise<OrderSummary[]>
-    export(format: LedgerExportFormat, query?: KeyQuery): Promise<string>
+    export(format: LedgerExportFormat, query?: KeyQuery): Promise<LedgerExportSaveResult>
   }
   /** 只读同步：拉 Humble 订单并增量入库。 */
   sync: {

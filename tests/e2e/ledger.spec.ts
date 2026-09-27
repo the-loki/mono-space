@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type ElectronApplication, _electron as electron, expect, test } from '@playwright/test'
@@ -119,7 +119,10 @@ function seedLedger(dbPath: string): SeedResult {
 }
 
 /** 用临时库启动应用。 */
-function launchApp(dbPath: string): Promise<ElectronApplication> {
+function launchApp(
+  dbPath: string,
+  extraEnv: Record<string, string> = {},
+): Promise<ElectronApplication> {
   return electron.launch({
     args: ['out/main/index.js', '--no-sandbox'],
     env: {
@@ -127,6 +130,7 @@ function launchApp(dbPath: string): Promise<ElectronApplication> {
       MS_TEST: '1',
       MS_LEDGER_DB: dbPath,
       DISPLAY: process.env.DISPLAY || ':198',
+      ...extraEnv,
     },
   })
 }
@@ -306,6 +310,91 @@ test('订单无 key：明细显示空态而不是列表', async () => {
     await expect(page.getByTestId('ledger-empty')).toBeVisible()
     await expect(page.getByTestId('ledger-total')).toHaveText('共 0 条')
     await expect(page.locator('[data-testid="ledger-row"]')).toHaveCount(0)
+  } finally {
+    await app.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+/**
+ * 导出落盘：`docs/verify/33-full-test.md` §0 问题 1 记录过「导出算完文本就被丢掉」的真 bug。
+ * 原生保存对话框没法无头点，所以用仓库既有的测试缝模式（`MS_EXPORT_DIR`，同 `MS_LEDGER_DB`）：
+ * 指定目录时不弹对话框，直接落盘 —— 这样「导出到底有没有写出文件」才真的被 e2e 钉住。
+ */
+test('导出 JSON / CSV：真的落盘到指定目录，且文件内容正确（列表却仍不含码）', async () => {
+  const { dir, dbPath } = tempLedger()
+  const exportDir = join(dir, 'exports')
+  mkdirSync(exportDir)
+  const repo = openLedger({ path: dbPath })
+  repo.applyOrderSync([
+    {
+      remoteId: 'order-export',
+      productName: '导出用订单',
+      bundles: [
+        {
+          remoteId: 'order-export_page',
+          name: '导出用包',
+          keys: [
+            {
+              remoteId: 'key-0',
+              name: '资产 0',
+              revealStatus: 'revealed',
+              redeemStatus: 'not_redeemed',
+              redeemCode: 'EXPORT-SECRET-0',
+            },
+            {
+              remoteId: 'key-1',
+              name: '资产 1',
+              revealStatus: 'unrevealed',
+              redeemStatus: 'not_redeemed',
+              noCodeReason: 'expired',
+            },
+          ],
+        },
+      ],
+    },
+  ])
+  repo.close()
+
+  const app = await launchApp(dbPath, { MS_EXPORT_DIR: exportDir })
+  try {
+    const page = await app.firstWindow()
+    const note = page.getByTestId('ledger-export-note')
+
+    // JSON：点一下就该有文件，且提示写出路径。
+    await page.locator('[data-testid="ledger-export-json"]').click()
+    await expect(note).toContainText('已保存到')
+    await expect(note).toContainText(exportDir)
+    const jsonFiles = readdirSync(exportDir).filter((name) => name.endsWith('.json'))
+    expect(jsonFiles).toHaveLength(1)
+    expect(jsonFiles[0]).toMatch(/^monospace-ledger-\d{4}-\d{2}-\d{2}\.json$/)
+    const parsed = JSON.parse(readFileSync(join(exportDir, jsonFiles[0]!), 'utf8')) as {
+      version?: number
+      orders?: {
+        bundles?: { keys?: { redeemCode?: string | null; noCodeReason?: string | null }[] }[]
+      }[]
+    }
+    // 导出的是「订单 → 包 → key」嵌套结构（`parseLedgerJson` 的往返格式），不是扁平 keys 数组。
+    const rows = (parsed.orders ?? []).flatMap((order) =>
+      (order.bundles ?? []).flatMap((bundle) => bundle.keys ?? []),
+    )
+    expect(rows).toHaveLength(2)
+    // 导出**是**要带码的（这是导出的用途）；列表不带动是另一条约束，两者不矛盾。
+    expect(rows.some((row) => row.redeemCode === 'EXPORT-SECRET-0')).toBe(true)
+    // 无码缘由也进导出：导出台账却不说哪行没码、为什么没码，正是用户要这个功能的原因。
+    expect(rows.some((row) => row.noCodeReason === 'expired')).toBe(true)
+
+    // CSV：另一个文件，表头正确。
+    await page.locator('[data-testid="ledger-export-csv"]').click()
+    await expect(note).toContainText('已保存到')
+    const csvFiles = readdirSync(exportDir).filter((name) => name.endsWith('.csv'))
+    expect(csvFiles).toHaveLength(1)
+    const csv = readFileSync(join(exportDir, csvFiles[0]!), 'utf8')
+    expect(csv.split('\n')[0]).toContain('redeemCode')
+    expect(csv).toContain('EXPORT-SECRET-0')
+
+    // 同一页面上，列表依旧不预加载兑换码明文（导出的文件里有，界面里没有）。
+    expect(await page.content()).not.toContain('EXPORT-SECRET-0')
   } finally {
     await app.close()
     rmSync(dir, { recursive: true, force: true })

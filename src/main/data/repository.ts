@@ -560,7 +560,8 @@ export class LedgerRepository {
               k.revealed_at AS revealed_at,
               k.redeem_status AS redeem_status,
               k.redeemed_at AS redeemed_at,
-              k.redeem_code AS redeem_code
+              k.redeem_code AS redeem_code,
+              k.no_code_reason AS no_code_reason
        ${KEY_FROM_JOIN}
        WHERE ${filter.where}
        ORDER BY o.id ASC, b.id ASC, k.id ASC`,
@@ -582,6 +583,7 @@ export class LedgerRepository {
       redeemStatus: (text(row.redeem_status) ?? 'not_redeemed') as RedeemStatus,
       redeemedAt: text(row.redeemed_at),
       redeemCode: text(row.redeem_code),
+      noCodeReason: normalizeNoCodeReason(row.no_code_reason),
     }))
   }
 

@@ -5,6 +5,8 @@
  * JSON 额外还原成「订单 → 包 → key」嵌套结构。
  * 本模块为纯函数，不依赖数据库与 electron。
  */
+
+import { normalizeNoCodeReason } from './no-code-reason'
 import {
   LEDGER_EXPORT_KEY_COLUMNS,
   LEDGER_EXPORT_VERSION,
@@ -43,8 +45,11 @@ export const CSV_COLUMNS = [
   ...Object.values(LEDGER_EXPORT_KEY_COLUMNS),
 ] as const satisfies readonly (keyof LedgerExportRow)[]
 
-/** 可以缺席的 CSV 列：老导出文件没有 platform，缺了按 unknown 处理，不算格式错误。 */
-const CSV_OPTIONAL_COLUMNS: readonly (keyof LedgerExportRow)[] = ['platform']
+/**
+ * 可以缺席的 CSV 列：老导出文件没有这两列，缺了不算格式错误。
+ * `platform` 缺了按 unknown、`noCodeReason` 缺了按「未判定」（null）处理。
+ */
+const CSV_OPTIONAL_COLUMNS: readonly (keyof LedgerExportRow)[] = ['platform', 'noCodeReason']
 
 // 编译期闸门：导出行加了字段却忘了列进 CSV_COLUMNS 时，`Exclude` 不为 `never`，
 // 下面这行赋值不成立 → 编译报错（而不是导出时静默少一列）。
@@ -91,6 +96,7 @@ export function rowsToOrders(rows: readonly LedgerExportRow[]): SyncedOrder[] {
         redeemedAt: row.redeemedAt,
         redeemCode: row.redeemCode,
         platform: row.platform,
+        noCodeReason: row.noCodeReason,
       }
       bundle.keys.push(key)
     }
@@ -167,6 +173,7 @@ export function parseLedgerCsv(text: string): SyncedOrder[] {
       redeemedAt: emptyToNull(record.get('redeemedAt')),
       redeemCode: emptyToNull(record.get('redeemCode')),
       platform: toPlatform(record.get('platform')),
+      noCodeReason: normalizeNoCodeReason(record.get('noCodeReason')),
     })
   }
   // 丢弃缺少关键归属信息的行。
@@ -197,6 +204,7 @@ function normalizeOrder(order: SyncedOrder): SyncedOrder {
                 redeemedAt: key.redeemedAt ?? null,
                 redeemCode: key.redeemCode ?? null,
                 platform: toPlatform(key.platform ?? undefined),
+                noCodeReason: normalizeNoCodeReason(key.noCodeReason),
               }))
             : [],
         }))

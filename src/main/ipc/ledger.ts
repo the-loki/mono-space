@@ -5,15 +5,16 @@
  *   - `ledger:list`   (query: KeyQuery)  -> KeyPage（items 只含 KeyListItem，无兑换码明文）
  *   - `ledger:count`  (query: KeyQuery)  -> number
  *   - `ledger:orders` ()                -> OrderSummary[]（订单主视图：全部订单 + key 计数）
- *   - `ledger:export` (format, query)   -> string（JSON / CSV 文本，含码，仅按需调用）
+ *   - `ledger:export` (format, query)   -> LedgerExportSaveResult（弹保存对话框写盘；取消=saved:false）
  *
  * 列表与计数一律经 toKeyListItem 白名单投影，杜绝兑换码明文混入。
  */
 import { join } from 'node:path'
-import { app, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type { LedgerExportFormat } from '../../shared/ipc-contract'
 import { type LedgerRepository, openLedger } from '../data/repository'
 import type { KeyListItem, KeyPage, KeyQuery, OrderSummary } from '../data/types'
+import { createSaveDeps, saveExportFile } from './export-file'
 
 export const LEDGER_LIST_CHANNEL = 'ledger:list'
 export const LEDGER_COUNT_CHANNEL = 'ledger:count'
@@ -90,7 +91,26 @@ export function registerLedgerIpc(): void {
   ipcMain.handle(LEDGER_ORDERS_CHANNEL, (): OrderSummary[] => repo.listOrders())
   ipcMain.handle(
     LEDGER_EXPORT_CHANNEL,
-    (_event, format: LedgerExportFormat, query: KeyQuery = {}) =>
-      format === 'csv' ? repo.exportCsv(query) : repo.exportJson(query),
+    async (event, format: LedgerExportFormat, query: KeyQuery = {}) => {
+      // 先算文本（仓储侧含兑换码明文，这是导出的用途），再让用户选路径落盘。
+      const text = format === 'csv' ? repo.exportCsv(query) : repo.exportJson(query)
+      const parent = BrowserWindow.fromWebContents(event.sender)
+      const deps = createSaveDeps(process.env, async (defaultPath, title) => {
+        const options = { defaultPath, title, filters: exportFilters(format) }
+        // 父窗口可能已销毁（无头测试/关窗竞态）——那就退化成无父对话框，不要抛。
+        const result = parent
+          ? await dialog.showSaveDialog(parent, options)
+          : await dialog.showSaveDialog(options)
+        return result.canceled || !result.filePath ? null : result.filePath
+      })
+      return saveExportFile(deps, { format, query }, text)
+    },
   )
+}
+
+/** 对话框的文件类型筛选（只给对应的那一档，别让用户存出扩展名与内容不符的文件）。 */
+function exportFilters(format: LedgerExportFormat): { name: string; extensions: string[] }[] {
+  return format === 'csv'
+    ? [{ name: 'CSV 表格', extensions: ['csv'] }]
+    : [{ name: 'JSON', extensions: ['json'] }]
 }

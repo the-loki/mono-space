@@ -168,12 +168,21 @@ describe('导出 / 导入往返', () => {
       target.close()
     })
 
-    it('platform 追加在 CSV 末尾，不挪动老列的位置', () => {
+    it('后加的列（platform / noCodeReason）追加在 CSV 末尾，不挪动老列的位置', () => {
       // 老文件按列名解析、与位置无关，但放末尾是改动最小、最保守的做法。
-      expect(CSV_COLUMNS[CSV_COLUMNS.length - 1]).toBe('platform')
+      expect(CSV_COLUMNS.slice(-2)).toEqual(['platform', 'noCodeReason'])
+      // 归属列是历史顺序，永远不动（这条是「挪列会读到别人的值」的防线）。
+      expect(CSV_COLUMNS.slice(0, 6)).toEqual([
+        'accountId',
+        'orderRemoteId',
+        'orderProductName',
+        'bundleRemoteId',
+        'bundleName',
+        'publisher',
+      ])
     })
 
-    it('不含 platform 的老 JSON 导出仍能导入，缺省 unknown', () => {
+    it('不含 platform / noCodeReason 的老 JSON 导出仍能导入，缺省 unknown 与「未判定」', () => {
       const source = openLedger({ path: ':memory:' })
       source.applyOrderSync(platformOrders())
       const legacy = JSON.parse(source.exportJson()) as {
@@ -181,7 +190,10 @@ describe('导出 / 导入往返', () => {
       }
       for (const order of legacy.orders) {
         for (const bundle of order.bundles) {
-          for (const key of bundle.keys) delete key.platform
+          for (const key of bundle.keys) {
+            delete key.platform
+            delete key.noCodeReason
+          }
         }
       }
 
@@ -190,28 +202,82 @@ describe('导出 / 导入往返', () => {
 
       expect(result.keys.inserted).toBe(2)
       expect(target.listKeys().items.every((item) => item.platform === 'unknown')).toBe(true)
+      expect(target.listKeys().items.every((item) => item.noCodeReason === null)).toBe(true)
       source.close()
       target.close()
     })
 
-    it('不含 platform 的老 CSV 导出仍能导入，缺省 unknown', () => {
+    it('不含 platform / noCodeReason 的老 CSV 导出仍能导入，缺省 unknown 与「未判定」', () => {
       const source = openLedger({ path: ':memory:' })
       source.applyOrderSync(platformOrders())
-      // platform 是末列，去掉每行最后一个字段即得老格式。
+      // platform 与 noCodeReason 都是末尾列，去掉每行最后两个字段即得老格式。
       const legacy = source
         .exportCsv()
         .split('\n')
-        .map((line) => line.replace(/,[^,]*$/, ''))
+        .map((line) => line.replace(/,[^,]*,[^,]*$/, ''))
         .join('\n')
-      expect(legacy.split('\n')[0]?.split(',')).not.toContain('platform')
+      const header = legacy.split('\n')[0]?.split(',')
+      expect(header).not.toContain('platform')
+      expect(header).not.toContain('noCodeReason')
 
       const target = openLedger({ path: ':memory:' })
       const result = target.importCsv(legacy)
 
       expect(result.keys.inserted).toBe(2)
       expect(target.listKeys().items.every((item) => item.platform === 'unknown')).toBe(true)
+      expect(target.listKeys().items.every((item) => item.noCodeReason === null)).toBe(true)
       source.close()
       target.close()
+    })
+
+    it('无码缘由在 JSON / CSV 两个方向都能往返（导出带上它，导回来还在）', () => {
+      const orders: SyncedOrder[] = [
+        {
+          remoteId: 'order-ncr',
+          productName: '无码缘由订单',
+          bundles: [
+            {
+              remoteId: 'bundle-ncr',
+              name: '包',
+              keys: [
+                {
+                  remoteId: 'key-expired',
+                  name: '过期的',
+                  platform: 'epic',
+                  noCodeReason: 'exhausted',
+                },
+                { remoteId: 'key-plain', name: '有码的', platform: 'fab', redeemCode: 'ABC-123' },
+              ],
+            },
+          ],
+        },
+      ]
+      const source = openLedger({ path: ':memory:' })
+      source.applyOrderSync(orders)
+
+      for (const [kind, text] of [
+        ['json', source.exportJson()],
+        ['csv', source.exportCsv()],
+      ] as const) {
+        // 导出里**看得见**这一列（导出台账却不说哪行没码，正是用户要这个功能的原因）。
+        expect(text, `${kind} 导出应含 noCodeReason`).toContain('noCodeReason')
+        expect(text, `${kind} 导出应含缘由取值`).toContain('exhausted')
+
+        const target = openLedger({ path: ':memory:' })
+        if (kind === 'json') {
+          target.importJson(text)
+        } else {
+          target.importCsv(text)
+        }
+        const items = target.listKeys().items
+        expect(items.find((item) => item.keyRemoteId === 'key-expired')?.noCodeReason).toBe(
+          'exhausted',
+        )
+        // 有码的那行不该凭空长出缘由。
+        expect(items.find((item) => item.keyRemoteId === 'key-plain')?.noCodeReason).toBeNull()
+        target.close()
+      }
+      source.close()
     })
   })
 

@@ -172,21 +172,19 @@ interface LedgerExportOwnerFields {
  */
 type LedgerKeyFieldName = Exclude<
   keyof KeyDetail,
-  | keyof LedgerExportOwnerFields
-  | 'id'
-  | 'orderId'
-  | 'bundleId'
-  // 无码缘由本次**不进导出**（导出目前没有任何出口，是 docs/verify/33-full-test.md §0
-  // 记录的已知问题；等导出修好再加）。显式排除它，好让「列表加了字段就逼导出加列」的
-  // `satisfies` 闸门不被它触发（否则导出会多一列，既动了 CSV 末列约定，又要改 serialize.ts）。
-  | 'noCodeReason'
+  keyof LedgerExportOwnerFields | 'id' | 'orderId' | 'bundleId'
 >
+
+// 说明：无码缘由原先被显式排除在导出外，理由是「导出没有出口」（docs/verify/33-full-test.md §0）。
+// 导出修好（`docs/verify/36-export-save-dialog.md`）后这条理由消失，就顺势纳入了——
+// 导出台账却不告诉你哪些行没有码、为什么没有，正是用户要这个功能的原因。
 
 /**
  * key 字段 → 导出列名的唯一映射表：导出带哪些 key 字段只此一处定义。
  *
  * 列名沿用历史导出格式（只有 `name → keyName` 一处改名），老文件按列名仍能读回。
- * `platform` 放末尾：CSV 按列名解析、与位置无关，但放末尾对老文件最保守。
+ * `platform` 与 `noCodeReason` 放末尾：CSV 按列名解析、与位置无关，但放末尾对老文件最保守
+ * （两者都是后加的列，老导出文件里没有，读回时按「缺席」处理，见 `CSV_OPTIONAL_COLUMNS`）。
  */
 export const LEDGER_EXPORT_KEY_COLUMNS = {
   keyRemoteId: 'keyRemoteId',
@@ -198,6 +196,7 @@ export const LEDGER_EXPORT_KEY_COLUMNS = {
   redeemedAt: 'redeemedAt',
   redeemCode: 'redeemCode',
   platform: 'platform',
+  noCodeReason: 'noCodeReason',
 } as const satisfies Record<LedgerKeyFieldName, string>
 
 /**

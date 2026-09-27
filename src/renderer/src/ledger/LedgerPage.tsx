@@ -69,10 +69,13 @@ export function LedgerPage(): JSX.Element {
       try {
         // 明细视图下导出只导出这一单（工具栏对两个视图都生效）。
         const query = selectedOrder ? { orderRemoteId: selectedOrder.orderRemoteId } : {}
-        const text = await window.api.ledger.export(format, query)
-        setExportNote(`已生成 ${format.toUpperCase()}（${text.length} 字符）`)
+        // 主进程弹保存对话框并写盘；**取消不是失败**（以前这里只显示文本长度，数据被丢掉）。
+        const result = await window.api.ledger.export(format, query)
+        setExportNote(result.saved ? `已保存到 ${result.path}` : '已取消保存')
       } catch (cause: unknown) {
-        setExportNote(cause instanceof Error ? cause.message : String(cause))
+        setExportNote(
+          cause instanceof Error ? `导出失败：${cause.message}` : `导出失败：${String(cause)}`,
+        )
       }
     },
     [selectedOrder],
