@@ -121,8 +121,10 @@ export function mergePageReadWithApiKeys(
       name: trimText(apiKey.name),
       // 接口身份里的机器名当 keyType，和接口时代的做法一致（页面侧它永远是 null）。
       keyType: trimText(apiKey.keyType) ?? trimText(apiKey.machineName),
-      // **不拿 machine_name 后缀猜平台**：那是旧「引擎」语义，平台只认页面的兑换链接证据。
-      // 补充行没有页面证据 → 老实留 null（界面按「未知」显示），不猜（ADR-0003 的同一取向）。
+      // **不拿 machine_name 后缀猜平台**：那是旧「引擎」语义。
+      // 平台判断已交给 agent（ADR-0006）：这一行不是 agent 从页面读来的，**没有它的判断可用**，
+      // 所以老实留 null（＝「从未有过平台判断」，界面按「未知」显示）——
+      // 既比凭接口字段猜一个平台诚实，也比写死 `unknown` 更能区分「没判断」与「判断为未知」。
       platform: null,
       // 有码 ⇒ Humble 侧已揭示。时间不知道，留 null，不编。
       revealStatus: 'revealed',

@@ -9,10 +9,18 @@ describe('按订单读 key 的内置任务提示词', () => {
     expect(prompt).toContain('https://www.humblebundle.com/downloads?key=TXzbXSpBc3qfUc3M')
   })
 
-  it('要求逐行读并带每行自己的 redemptionUrl，平台由应用解析', () => {
+  it('要求逐行读并带每行自己的 redemptionUrl 与 platform（平台由 agent 逐行判断）', () => {
     expect(prompt).toContain('redemptionUrl')
     expect(prompt).toContain('Redemption Instructions')
-    expect(prompt).toContain('平台由应用解析')
+    expect(prompt).toContain('platform')
+    // 取值从台账既有平台名里选，判不出写 unknown，逐行判断、不许编。
+    for (const name of ['fab', 'epic', 'steam', 'unity', 'gog']) expect(prompt).toContain(name)
+    expect(prompt).toContain('unknown')
+    expect(prompt).toContain('逐行判断')
+    expect(prompt).toContain('不要假设「一页一平台」')
+    expect(prompt).toContain('不许编')
+    // 旧说法（平台由应用解析）必须消失。
+    expect(prompt).not.toContain('平台由应用解析')
   })
 
   it('沿用纪律：简体中文 / 不用接口取码 / 认不出交人工', () => {

@@ -428,17 +428,47 @@ describe('页面读取落库 keys_ingest（ADR-0003 的唯一落库入口）', (
   })
 })
 
-describe('keys_ingest 的输出 schema 内置在应用侧，且平台证据必填', () => {
-  it('每条 key 的 redemptionUrl 是 required（agent 不能省略，也不用自己判平台）', () => {
+describe('keys_ingest 的 schema：平台由 agent 逐行判断，取值只做收敛', () => {
+  function keysSchema() {
     const spec = createTools(fakeHost()).find((tool) => tool.name === `${TOOL_PREFIX}keys_ingest`)
     const parameters = spec?.parameters as unknown as {
-      properties: { keys: { items: { required?: string[]; properties?: Record<string, unknown> } } }
+      properties: {
+        keys: {
+          items: {
+            required?: string[]
+            properties?: Record<string, { description?: string; minLength?: number }>
+          }
+        }
+      }
     }
-    const keys = parameters.properties.keys.items
+    return parameters.properties.keys.items
+  }
+
+  it('每条 key 的 redemptionUrl 是 required，但**不要求非空**', () => {
+    const keys = keysSchema()
     expect(keys.required).toContain('redemptionUrl')
-    // **不要求非空**：实测 schema 报错会让整笔写入回滚 —— 一行空串 → 整单丢失。
-    expect((keys.properties?.redemptionUrl as { minLength?: number })?.minLength).toBeUndefined()
-    // platform 不再作为入参：平台由应用从链接解析（不信调用方自报）。
-    expect(Object.keys(keys.properties ?? {})).not.toContain('platform')
+    // 实测 schema 报错会让整笔写入回滚 —— 一行空串 → 整单丢失。
+    expect(keys.properties?.redemptionUrl?.minLength).toBeUndefined()
+  })
+
+  it('每条 key 的 platform 是 required（防漏传），但不做非空 / 枚举约束', () => {
+    const keys = keysSchema()
+    expect(Object.keys(keys.properties ?? {})).toContain('platform')
+    // 「必填」是为了防 agent 漏传（漏了就等于根本没判断）；而 `unknown` 是合法答案，「判不出」不算漏传。
+    expect(keys.required ?? []).toContain('platform')
+    // 自由字符串，不做非空 / 枚举约束（枚举会让「判不出」的写法在 schema 层直接失败）。
+    expect(keys.properties?.platform?.minLength).toBeUndefined()
+    expect(keys.properties?.platform).not.toHaveProperty('anyOf')
+  })
+
+  it('platform 的描述写清取值范围、「逐行判断」与「不许编」', () => {
+    const description = keysSchema().properties?.platform?.description ?? ''
+    for (const name of ['fab', 'epic', 'steam', 'unity', 'gog', 'unknown']) {
+      expect(description).toContain(name)
+    }
+    expect(description).toContain('逐行判断')
+    expect(description).toContain('不要编')
+    // 旧说法（平台由应用解析）必须消失。
+    expect(description).not.toContain('平台由应用解析')
   })
 })

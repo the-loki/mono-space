@@ -90,6 +90,9 @@ describe('createEmbeddedAgent', () => {
     // ADR-0003：key 与资产包只从页面读取，agent 是执行者。
     expect(SYSTEM_PROMPT).toContain('只从页面读取')
     expect(SYSTEM_PROMPT).toContain('monospace_keys_ingest')
+    // ADR-0006：平台由 agent 逐行判断（旧说法「平台由应用从它解析」必须消失）。
+    expect(SYSTEM_PROMPT).toContain('逐行判断')
+    expect(SYSTEM_PROMPT).not.toContain('平台由应用从它解析')
   })
 
   it('系统提示词明确要求零英文（实测会漏句子，所以写死这条约束）', () => {

@@ -268,3 +268,52 @@ describe('接口那一趟确实走的是订单详情端点（经注入的假客�
     repository.close()
   })
 })
+
+describe('平台由 agent 逐行给出并落库（ADR-0006）', () => {
+  it('同一单里两行给不同平台 ⇒ 库里两行各自正确', async () => {
+    const repository = openLedger({ path: ':memory:' })
+    await ingestPageOrder({
+      repository,
+      read: pageRead([
+        { name: 'Alpha', revealed: true, code: 'A', platform: 'epic' },
+        { name: 'Beta', revealed: true, code: 'B', platform: 'unity' },
+      ]),
+      fetchApiKeys: async () => [],
+    })
+
+    const items = repository.listKeys({ orderRemoteId: 'ORDER-1', limit: 100 }).items
+    expect(Object.fromEntries(items.map((item) => [item.keyRemoteId, item.platform]))).toEqual({
+      alpha: 'epic',
+      beta: 'unity',
+    })
+    repository.close()
+  })
+
+  it('一行平台坏（空串 / 纯空白 / 无法识别 / 缺失）⇒ 落 unknown，整笔仍写入成功', async () => {
+    const repository = openLedger({ path: ':memory:' })
+    const result = await ingestPageOrder({
+      repository,
+      read: pageRead([
+        { name: 'Alpha', revealed: true, code: 'A', platform: '' },
+        { name: 'Beta', revealed: true, code: 'B', platform: '   ' },
+        { name: 'Gamma', revealed: false, platform: 'unreal-engine' },
+        { name: 'Delta', revealed: false },
+        { name: 'Epsilon', revealed: false, platform: '  Epic ' },
+      ]),
+      fetchApiKeys: async () => [],
+    })
+
+    // 整笔写入成功：5 行全落库，一行坏没有连累整单（ADR-0006 的硬边界）。
+    expect(result.write.keys.inserted).toBe(5)
+    const items = repository.listKeys({ orderRemoteId: 'ORDER-1', limit: 100 }).items
+    expect(items).toHaveLength(5)
+    expect(Object.fromEntries(items.map((item) => [item.keyRemoteId, item.platform]))).toEqual({
+      alpha: 'unknown',
+      beta: 'unknown',
+      gamma: 'unknown',
+      delta: 'unknown',
+      epsilon: 'epic',
+    })
+    repository.close()
+  })
+})

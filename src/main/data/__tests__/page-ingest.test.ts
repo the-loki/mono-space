@@ -3,14 +3,16 @@
  *
  * 重点测三件真会出错的事：身份稳不稳（重读会不会重复插入）、
  * 未揭示的 key 会不会被塞进码、撞名资产会不会被并成一条。
+ *
+ * 平台已改为**由 agent 逐行判断**（ADR-0006）：应用侧不再有链接 / slug / 显示名的
+ * 三层回退解析，只对 agent 交上来的取值做**收敛**（非法 / 缺失 → unknown，绝不回滚整单）。
  */
 import { describe, expect, it } from 'vitest'
 import {
   buildPageOrder,
+  normalizePlatform,
   pageBundleRemoteId,
   pageKeyRemoteIds,
-  parsePlatform,
-  resolvePlatform,
   slug,
 } from '../page-ingest'
 
@@ -127,114 +129,81 @@ describe('buildPageOrder：只写页面上真实读到的东西', () => {
   })
 })
 
-describe('parsePlatform：从「Redemption Instructions」链接解平台', () => {
-  const EPIC =
-    'https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem'
-
-  it('实测过的真实链接 → epic', () => {
-    expect(parsePlatform(EPIC)).toBe('epic')
-  })
-
-  it('其它平台（文章名里就是平台名）', () => {
-    expect(
-      parsePlatform(
-        'https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-Steam',
-      ),
-    ).toBe('steam')
-    expect(
-      parsePlatform(
-        'https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-Unity',
-      ),
-    ).toBe('unity')
-    expect(
-      parsePlatform('https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-GOG'),
-    ).toBe('gog')
-    expect(
-      parsePlatform('https://support.humblebundle.com/hc/en-us/articles/123-How-to-Redeem-on-Fab'),
-    ).toBe('fab')
-  })
-
-  it('也接受直接给文章名（不一定是完整链接）', () => {
-    expect(parsePlatform('How-to-Redeem-on-Steam')).toBe('steam')
-  })
-
-  it('认不出就 unknown —— **不猜**', () => {
-    expect(
-      parsePlatform('https://support.humblebundle.com/hc/en-us/articles/123-Contact-Support'),
-    ).toBe('unknown')
-    expect(parsePlatform('')).toBe('unknown')
-    expect(parsePlatform(null)).toBe('unknown')
-    expect(parsePlatform(undefined)).toBe('unknown')
-  })
-
-  it('不会把无关词里的字母撞上（epic 需要是独立词）', () => {
-    expect(parsePlatform('https://example.com/help/epicenter-of-news')).toBe('unknown')
-  })
-})
-
-describe('平台逐条判断（用户明确：同一订单页可能混多个平台）', () => {
-  const EPIC = 'https://support.humblebundle.com/hc/en-us/articles/1-How-to-Redeem-on-Epic-Games'
-  const STEAM = 'https://support.humblebundle.com/hc/en-us/articles/2-How-to-Redeem-on-Steam'
-
-  it('同一单里两条 key 可以解出不同平台', () => {
+describe('平台由 agent 逐行给出（ADR-0006：应用不再自己解析）', () => {
+  it('同一单里两行给不同平台 ⇒ 两行各自落库正确', () => {
     const order = buildPageOrder({
       orderGamekey: 'Mixed1',
       keys: [
-        { name: 'Alpha', revealed: true, code: 'A', redemptionUrl: EPIC },
-        { name: 'Beta', revealed: true, code: 'B', redemptionUrl: STEAM },
+        { name: 'Alpha', revealed: true, code: 'A', platform: 'epic' },
+        { name: 'Beta', revealed: true, code: 'B', platform: 'unity' },
       ],
     })
     const keys = order.bundles[0]?.keys ?? []
-    expect(keys[0]?.platform).toBe('epic')
-    expect(keys[1]?.platform).toBe('steam')
+    expect(keys.map((key) => key.platform)).toEqual(['epic', 'unity'])
   })
 
-  it('只认链接：不采信调用方自报的平台名（输出 schema 内置在应用侧）', () => {
+  it('取值做大小写与首尾空白归一，免得把合法平台误判成未知', () => {
     const order = buildPageOrder({
       orderGamekey: 'g',
-      // @ts-expect-error 故意多给一个 platform：它必须被忽略，平台只从链接来
-      keys: [{ name: 'X', revealed: true, code: 'A', platform: 'fab', redemptionUrl: STEAM }],
+      keys: [
+        { name: 'A', revealed: false, platform: '  Epic ' },
+        { name: 'B', revealed: false, platform: 'steam' },
+        { name: 'C', revealed: false, platform: 'UNKNOWN' },
+      ],
     })
-    expect(order.bundles[0]?.keys[0]?.platform).toBe('steam')
+    expect(order.bundles[0]?.keys.map((key) => key.platform)).toEqual(['epic', 'steam', 'unknown'])
   })
 
-  it('没给链接也没给平台 → unknown（不默认成某个平台）', () => {
+  it('agent 没给平台 → unknown（不默认成某个平台）', () => {
     const order = buildPageOrder({ orderGamekey: 'g', keys: [{ name: 'X', revealed: false }] })
+    expect(order.bundles[0]?.keys[0]?.platform).toBe('unknown')
+  })
+
+  it('不再从 redemptionUrl 反推平台：链接是 epic 但 agent 说 unknown，就落 unknown', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'g',
+      keys: [
+        {
+          name: 'X',
+          revealed: true,
+          code: 'A',
+          redemptionUrl:
+            'https://support.humblebundle.com/hc/en-us/articles/1-How-to-Redeem-on-Epic-Games',
+          platform: 'unknown',
+        },
+      ],
+    })
     expect(order.bundles[0]?.keys[0]?.platform).toBe('unknown')
   })
 })
 
-describe('平台解析的诚实性（实测教训）', () => {
-  it('空串归 unknown（不是平台，也不能算通过）', () => {
-    expect(parsePlatform('')).toBe('unknown')
-    expect(parsePlatform('   ')).toBe('unknown')
-  })
-
-  it('明确写「无」归 unknown —— 给 agent 一个说不知道的口子，好过让它编', () => {
-    for (const marker of ['无', 'None', 'N/A', '-', '—']) {
-      expect(parsePlatform(marker)).toBe('unknown')
+describe('平台取值只做收敛，绝不回滚整笔写入（ADR-0006 的硬边界）', () => {
+  it('缺失 / 空串 / 纯空白 / 无法识别的取值一律 unknown', () => {
+    for (const value of [undefined, null, '', '   ', 'unreal', 'epicenter', 'Epic Store 平台']) {
+      expect(normalizePlatform(value)).toBe('unknown')
     }
   })
 
-  it('只有数字 ID、没有 slug 的文章链接归 unknown（Humble 的文章链接大量如此）', () => {
-    expect(parsePlatform('https://support.humblebundle.com/hc/en-us/articles/14325363915931')).toBe(
-      'unknown',
-    )
-    expect(parsePlatform('https://support.humblebundle.com/hc/articles/360020257973')).toBe(
-      'unknown',
-    )
+  it('台账既有平台名（含 unknown）原样通过', () => {
+    for (const value of ['fab', 'epic', 'steam', 'unity', 'gog', 'unknown']) {
+      expect(normalizePlatform(value)).toBe(value)
+    }
   })
 
-  it('带 slug 的老格式链接仍能解析出平台', () => {
-    expect(
-      parsePlatform(
-        'https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem',
-      ),
-    ).toBe('epic')
-  })
-
-  it('无关域名不猜平台', () => {
-    expect(parsePlatform('https://www.gamedevmarket.net/')).toBe('unknown')
+  it('一行坏不连累整单：四行取值全非法，整单仍完整构造出四条 key', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'gk',
+      productName: '某资产包',
+      keys: [
+        { name: 'A', revealed: true, code: 'X', platform: '' },
+        { name: 'B', revealed: true, code: 'Y', platform: '   ' },
+        { name: 'C', revealed: false, platform: 'unreal-engine' },
+        { name: 'D', revealed: false },
+      ],
+    })
+    const keys = order.bundles[0]?.keys ?? []
+    expect(keys).toHaveLength(4)
+    expect(keys.map((key) => key.platform)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
   })
 })
 
@@ -250,81 +219,5 @@ describe('没有 key 的订单也要记得住（音乐 / 电子书下载包之�
     expect(order.remoteId).toBe('gk2')
     expect(order.productName).toBeNull()
     expect(order.bundles).toEqual([])
-  })
-})
-
-describe('逐层回退判平台（DOM 实测的三种真实情形）', () => {
-  it('层 1 域名：Steam 的兑换按钮链接（词边界匹配不到 steampowered，域名层能）', () => {
-    expect(
-      resolvePlatform({
-        name: 'Learning Factory',
-        redemptionUrl: 'https://store.steampowered.com/account/registerkey?key=VV3GW-LG03X-5QZIH',
-      }),
-    ).toBe('steam')
-  })
-
-  it('层 2 文章 slug：Epic 的老格式链接', () => {
-    expect(
-      resolvePlatform({
-        name: 'Astronauts (Pack)',
-        redemptionUrl:
-          'https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem',
-      }),
-    ).toBe('epic')
-  })
-
-  it('层 3 资产名：40 行的 FAB 包里 39 行连链接都没有，名字写着 FAB', () => {
-    expect(
-      resolvePlatform({
-        name: 'Nanite Series: Harbor Kit (FAB Professional License Key)',
-        redemptionUrl: '无',
-      }),
-    ).toBe('fab')
-  })
-
-  it('名字里的平台词同样按词边界认，认不出就 unknown（不猜）', () => {
-    expect(resolvePlatform({ name: 'Elemental Auras VFX Pack', redemptionUrl: '无' })).toBe(
-      'unknown',
-    )
-    // 「Steamforged」不是 steam —— 别把资产名当关键词表乱撞
-    expect(resolvePlatform({ name: 'Steamforged Games Pack', redemptionUrl: '无' })).toBe('unknown')
-  })
-
-  it('数字 ID 的无 slug 文章链接仍归 unknown（这层救不了，得靠名字）', () => {
-    expect(
-      resolvePlatform({
-        name: 'Some Asset',
-        redemptionUrl: 'https://support.humblebundle.com/hc/en-us/articles/14325363915931',
-      }),
-    ).toBe('unknown')
-  })
-})
-
-describe('空串按「无」处理（不让校验失败毁掉整单）', () => {
-  it('空串归 unknown，且仍能靠资产名回到平台', () => {
-    expect(parsePlatform('')).toBe('unknown')
-    expect(
-      resolvePlatform({
-        name: 'Nanite Series: Harbor Kit (FAB Professional License Key)',
-        redemptionUrl: '',
-      }),
-    ).toBe('fab')
-  })
-
-  it('整单都能落库：39 行 FAB 全是空串也不该有一条失败', () => {
-    const order = buildPageOrder({
-      orderGamekey: 'gk',
-      productName: 'Battle Hardened Game Asset Bundle by Hivemind',
-      keys: [
-        { name: 'A (FAB Professional License Key)', revealed: true, code: 'X', redemptionUrl: '' },
-        {
-          name: 'B (FAB Professional License Key)',
-          revealed: true,
-          code: 'Y',
-          redemptionUrl: '无',
-        },
-      ],
-    })
-    expect(order.bundles[0]?.keys.map((k) => k.platform)).toEqual(['fab', 'fab'])
   })
 })

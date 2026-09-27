@@ -25,7 +25,7 @@ export const REDEEM_STATUS_LABELS: Record<RedeemStatus, string> = {
 }
 
 /**
- * 平台标签。平台从页面链接逐条读出，才拿得准（ADR-0003）。
+ * 平台标签。平台由 agent 读页面时**逐行判断**后落库（ADR-0006），应用侧不再从兑换链接解析。
  */
 export const PLATFORM_LABELS: Record<Platform, string> = {
   fab: 'Fab',

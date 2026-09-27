@@ -12,104 +12,29 @@
  *
  * 特征匹配已删除后，`keytype` / `keyindex` 不再被揭示流程需要，所以显示名做身份是够的。
  */
-import type { Platform, SyncedBundle, SyncedKey, SyncedOrder } from './types'
+import {
+  PLATFORMS,
+  type Platform,
+  type SyncedBundle,
+  type SyncedKey,
+  type SyncedOrder,
+} from './types'
 
 /**
- * 从「Redemption Instructions」链接（或它的文章名）解析平台。
+ * 把 agent 给出的平台值收敛到台账既有的平台上（`PLATFORMS`）。
  *
- * 实测形如：
- *   https://support.humblebundle.com/hc/en-us/articles/360020257973-How-to-Redeem-on-Epic-Games#redeem
- *   → 文章名 How-to-Redeem-on-Epic-Games → epic
+ * **为什么是「收敛」而不是「校验失败」**：这是两次真实教训（ADR-0003 / ADR-0004）得出的硬边界
+ * ——曾经的 `redemptionUrl` 加了 `minLength: 1` 之后，**一行不合格就让整笔落库回滚**，
+ * 「一行没写」被放大成「整单丢失」。所以平台取值非法时**只落成 `unknown`**，
+ * 绝不抛错、绝不因此回滚整笔写入。
  *
- * **逐条判断**：同一订单页可能混着多个平台，所以判定入口是「那一行的链接」，不是页面级的某一个。
- * 认不出就返回 `unknown` —— 不猜。
+ * 平台由 agent 在页面上**逐行判断**（ADR-0006）。应用侧只做一件事：**取值必须合法**
+ * （缺失 / 空串 / 纯空白 / 无法识别的值一律 `unknown`）；判断本身不再由代码做。
+ * 大小写与首尾空白在这里归一（agent 偶尔会写 `Epic`），免得把合法平台误判成未知。
  */
-const PLATFORM_TOKENS: readonly { token: RegExp; platform: Platform }[] = [
-  { token: /(^|[^a-z])fab([^a-z]|$)/, platform: 'fab' },
-  { token: /(^|[^a-z])epic([^a-z]|$)/, platform: 'epic' },
-  { token: /(^|[^a-z])steam([^a-z]|$)/, platform: 'steam' },
-  { token: /(^|[^a-z])unity([^a-z]|$)/, platform: 'unity' },
-  { token: /(^|[^a-z])gog([^a-z]|$)/, platform: 'gog' },
-]
-
-/** 取链接的文章名：去掉 #hash 与查询串，取最后一段路径，再去掉前导的数字 id。 */
-function articleNameOf(value: string): string {
-  const noHash = value.split('#')[0] ?? ''
-  const noQuery = noHash.split('?')[0] ?? ''
-  const segment =
-    noQuery
-      .split('/')
-      .filter((part) => part.length > 0)
-      .pop() ?? noQuery
-  return segment.replace(/^\d+-/, '')
-}
-
-/**
- * 域名里的平台标记。
- *
- * 为什么要单独一层：`PLATFORM_TOKENS` 用的是**词边界**，匹配不到 `steampowered.com`
- * 这种连写域名（steam 后面紧跟 p，不构成词边界）。而实测 Steam 行的兑换链接正是
- * `store.steampowered.com/account/registerkey?key=…` —— 域名本身就是最硬的证据。
- */
-const PLATFORM_DOMAINS: readonly { token: RegExp; platform: Platform }[] = [
-  { token: /(^|\.)fab\.com$|(^|\.)fab\.com\//, platform: 'fab' },
-  { token: /(^|\.)epicgames\.(com|dev)/, platform: 'epic' },
-  { token: /(^|\.)steampowered\.com|(^|\.)steamcommunity\.com/, platform: 'steam' },
-  { token: /(^|\.)unity\.com|(^|\.)unity3d\.com/, platform: 'unity' },
-  { token: /(^|\.)gog\.com/, platform: 'gog' },
-]
-
-/**
- * 逐行判平台：按**证据强度**逐层回退，每一层都只看「这一行」自己的东西。
- *
- * DOM 实测（68 单真跑）得出的覆盖情况：
- *   层 1 **链接域名**：Steam 行给的是 `store.steampowered.com/...registerkey`，域名即证据；
- *   层 2 **兑换文章 slug**：`…-How-to-Redeem-on-Epic-Games` → epic。最权威，但**经常缺席**
- *        —— 实测大量链接只有数字 ID（`/hc/en-us/articles/14325363915931`）；
- *   层 3 **资产显示名**：实测那 40 行的 FAB 包里 **39 行连兑换链接都没有**，
- *        名字里写着 "(FAB Professional License Key)" —— 名字是唯一线索。
- *
- * ⚠️ 层 3 有误判风险（资产名里可能出现别家平台的词）。实测那批名字都带
- * 「(FAB … License Key)」这种明确后缀，所以收益远大于风险；但这是**已知的取舍**，
- * 不是无代价的：认不准时宁可 unknown，也不要为了「填满」而猜。
- */
-export function resolvePlatform(evidence: {
-  name?: string | null
-  redemptionUrl?: string | null
-}): Platform {
-  const url = (evidence.redemptionUrl ?? '').trim().toLowerCase()
-
-  for (const { token, platform } of PLATFORM_DOMAINS) {
-    if (token.test(url)) return platform
-  }
-
-  const fromArticle = parsePlatform(url)
-  if (fromArticle !== 'unknown') return fromArticle
-
-  return parsePlatform(evidence.name)
-}
-
-/**
- * agent 在「这一行没有兑换链接」时该交的明确标记。
- *
- * 实测：页面本身就不带平台信息的订单很多（第三方 key 行只有名字+码）。
- * 逼着 agent 必填会让它拿空串或页面上别处的链接充数 —— 那比「不知道」更糟，
- * 所以给一个**明确说不知道**的口子，好过让它编。
- *
- * 空串同样按「无」处理（下面的 `if (!raw) return 'unknown'`）：实测 agent 有时就是交空串，
- * 若把空串做成**校验失败**，整笔写入会回滚 —— 一行没写被放大成整单丢失。
- */
-const NO_LINK_MARKERS = ['无', 'none', 'n/a', 'na', '-', '—', 'unknown']
-
-export function parsePlatform(value: string | null | undefined): Platform {
-  const raw = (value ?? '').trim()
-  if (!raw) return 'unknown'
-  if (NO_LINK_MARKERS.includes(raw.toLowerCase())) return 'unknown'
-  const haystack = articleNameOf(raw).toLowerCase()
-  for (const { token, platform } of PLATFORM_TOKENS) {
-    if (token.test(haystack)) return platform
-  }
-  return 'unknown'
+export function normalizePlatform(value: string | null | undefined): Platform {
+  const raw = (value ?? '').trim().toLowerCase()
+  return (PLATFORMS as readonly string[]).includes(raw) ? (raw as Platform) : 'unknown'
 }
 
 /** agent 在页面上看到的一条 key。 */
@@ -123,9 +48,16 @@ export interface PageKeyRead {
   /**
    * 这一行「Redemption Instructions」链接（或文章名）。**必填**（工具层强制）。
    *
-   * 平台由应用从这里解析 —— 输出 schema 内置在应用侧，调用方只交原始证据。
+   * 它是这一行兑换去向的证据，供 agent 判断该去哪家商店兑换；
+   * 平台**不再**由应用从这里解析 —— 平台判断交给 agent（ADR-0006）。
    */
   redemptionUrl?: string | null
+  /**
+   * agent 在页面上逐行**判断**出的平台（台账平台枚举，判不出时给 `unknown`）。
+   *
+   * 取值经 `normalizePlatform` 收敛：缺失 / 空串 / 非法值都落 `unknown`，不会让写入失败。
+   */
+  platform?: string | null
 }
 
 /** agent 在页面上读到的一整单。 */
@@ -197,8 +129,8 @@ export function buildPageOrder(read: PageOrderRead): SyncedOrder {
     name: key.name,
     // key_type 留空：页面不提供机器名，硬编一个假的是在制造假数据。
     keyType: null,
-    // 平台逐条判：链接域名 → 文章 slug → 资产名（逐层回退，见 resolvePlatform）。
-    platform: resolvePlatform({ name: key.name, redemptionUrl: key.redemptionUrl }),
+    // 平台由 agent 逐行判断后交上来；这里只收敛取值（非法 / 缺失 → unknown），不替它判断。
+    platform: normalizePlatform(key.platform),
     revealStatus: key.revealed ? 'revealed' : 'unrevealed',
     revealedAt: null,
     redeemStatus: 'not_redeemed',
