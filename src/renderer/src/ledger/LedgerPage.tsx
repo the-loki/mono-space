@@ -111,13 +111,18 @@ export function LedgerPage(): JSX.Element {
     }
   }, [])
 
-  // 兑换仍走既有链路（它会打开可见窗口；需要登录 / 验证码时停在人在环路）。
+  // 内置任务：兑换单条 key（代理驱动：提交由 agent 在页面上完成，工具只登记结果）。
   const handleRedeem = useCallback(async (keyId: number) => {
-    setActionNote('兑换中…（若弹出窗口请完成登录）')
+    setActionNote('兑换中…（agent 会在页面上提交，若弹出窗口请完成登录）')
     try {
-      const result = await window.api.tasks.redeem(keyId)
+      const result = await window.api.agent.redeemKey(keyId)
+      const calls = result.toolCalls
+        .map((call) => `${call.name}${call.ok ? '' : '(失败)'}`)
+        .join('、')
       setActionNote(
-        `兑换结束：${result.status}${result.pause ? `（暂停：${result.pause}）` : ''}｜${result.note}`,
+        result.ok
+          ? `兑换（agent）：${result.text || '(无文本输出)'}${calls ? `｜调用：${calls}` : ''}`
+          : `兑换（agent）失败：${result.message}`,
       )
     } catch (cause: unknown) {
       setActionNote(cause instanceof Error ? cause.message : String(cause))

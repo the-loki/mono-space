@@ -5,10 +5,6 @@ directories:
 files:
   - out/**
   - package.json
-extraResources:
-  # 兑换/揭示用的 MV3 扩展（运行时由主进程 loadExtension，需以真实文件存在于磁盘）。
-  - from: src/main/redeem/extension
-    to: redeem-extension
 linux:
   target:
     - AppImage

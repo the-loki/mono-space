@@ -202,15 +202,6 @@ export interface LoginWindowResult {
   title: string
 }
 
-/** 揭示 / 兑换动作的 IPC 结果。 */
-export interface TaskIpcResult {
-  status: string
-  pause?: string
-  code?: string
-  attempts: number
-  note: string
-}
-
 // ————————————————————————————— 窗口 API —————————————————————————————
 
 /**
@@ -243,6 +234,8 @@ export interface MonoSpaceApi {
     readOrderKeys(gamekey: string): Promise<AgentRunResult>
     /** 内置任务：揭示单条 key（不可逆）。 */
     revealKey(keyId: number): Promise<AgentRunResult>
+    /** 内置任务：兑换单条 key（提交由 agent 在页面上完成，工具只登记结果）。 */
+    redeemKey(keyId: number): Promise<AgentRunResult>
     /** 调试日志快照（记录最新在前 + 运行状态）：仅主进程内存，进程内有效。 */
     log(): Promise<AgentLogSnapshot>
     /** 清空调试日志。 */
@@ -253,9 +246,8 @@ export interface MonoSpaceApi {
     /** 打开（或聚焦已有的）调试窗口；幂等。 */
     open(): Promise<void>
   }
-  /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
+  /** 动作：登录（会打开可见窗口供人接管）。 */
   tasks: {
     login(): Promise<LoginWindowResult[]>
-    redeem(keyId: number): Promise<TaskIpcResult>
   }
 }

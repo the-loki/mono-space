@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createTools, type McpHost, MONOSPACE_TAG, TOOL_PREFIX } from '../tools'
+import { REDEEM_STATUSES, type RedeemStatus } from '../../data/types'
+import {
+  createTools,
+  type McpHost,
+  MONOSPACE_TAG,
+  REDEEM_RECORDABLE_STATUSES,
+  TOOL_PREFIX,
+} from '../tools'
 
 function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
   return {
@@ -66,7 +73,14 @@ function fakeHost(overrides: Partial<McpHost> = {}): McpHost {
       url: 'u',
       title: 't',
     })),
-    keyRedeem: vi.fn(async () => ({ status: 'redeemed', attempts: 1, note: 'ok' })),
+    keyRedeem: vi.fn(
+      async ({ keyId, status, note }: { keyId: number; status: RedeemStatus; note?: string }) => ({
+        ok: true,
+        keyId,
+        status,
+        note: note ?? '',
+      }),
+    ),
     ...overrides,
   }
 }
@@ -128,7 +142,9 @@ describe('权限分层（#13）', () => {
     expect(layerOf(`${TOOL_PREFIX}act`)).toBe('L1')
     // key_reveal 已删除：揭示不再有硬编码工具，由 agent 在页面上完成（key_open 只开页面）。
     expect(layerOf(`${TOOL_PREFIX}key_open`)).toBe('L1')
-    expect(layerOf(`${TOOL_PREFIX}key_redeem`)).toBe('L2')
+    // key_redeem 从 L2 降到 L1：不可逆的**提交**已由 agent 在页面上完成，
+    // 这个工具只是把结果**登记**回台账（写 + 留痕），留在 L2 就等于 agent 用不上。
+    expect(layerOf(`${TOOL_PREFIX}key_redeem`)).toBe('L1')
   })
 })
 
@@ -270,10 +286,54 @@ describe('工具行为', () => {
     expect(createTools(host).map((t) => t.name)).not.toContain(`${TOOL_PREFIX}key_reveal`)
   })
 
-  it('兑换仍转发到既有链路', async () => {
+  it('兑换结果登记：转发 keyId / status / note 给宿主（不替 agent 提交）', async () => {
     const host = fakeHost()
-    await toolNamed(`${TOOL_PREFIX}key_redeem`, host).run({ keyId: 3 })
-    expect(host.keyRedeem).toHaveBeenCalledWith(3)
+    await toolNamed(`${TOOL_PREFIX}key_redeem`, host).run({
+      keyId: 3,
+      status: 'redeemed',
+      note: '页面显示成功',
+    })
+    expect(host.keyRedeem).toHaveBeenCalledWith({
+      keyId: 3,
+      status: 'redeemed',
+      note: '页面显示成功',
+    })
+  })
+})
+
+describe('兑换结果登记 key_redeem（ADR-0005：不替 agent 提交）', () => {
+  it('描述里写明是「登记」、不会替你提交、提交靠页面', () => {
+    const tool = toolNamed(`${TOOL_PREFIX}key_redeem`)
+    expect(tool.description).toContain('登记')
+    expect(tool.description).toContain('不会替你提交')
+    expect(tool.description).toContain('页面')
+    // 可达层：提交在页面上由 agent 完成，登记只是写台账 + 留痕。
+    expect(tool.layer).toBe('L1')
+  })
+
+  it('status 只收台账已有的兑换状态词（不发明新值）', () => {
+    const parameters = toolNamed(`${TOOL_PREFIX}key_redeem`).parameters as unknown as {
+      properties: { status: { anyOf?: { const?: string }[]; enum?: string[] } }
+    }
+    const status = parameters.properties.status
+    const raw = status.anyOf ?? status.enum ?? []
+    const values = raw.map((entry) => (typeof entry === 'string' ? entry : (entry.const ?? '')))
+    // schema 与常量同源：两边漂移任一方向都会被抓住。
+    expect(values).toEqual([...REDEEM_RECORDABLE_STATUSES])
+    // 每一个都必须是台账已有的兑换状态词（不发明新值）。
+    for (const value of REDEEM_RECORDABLE_STATUSES) {
+      expect(REDEEM_STATUSES).toContain(value)
+    }
+    // 中间态不是「结果」，不暴露给 agent 登记。
+    for (const transient of ['precheck', 'probing', 'redeeming']) {
+      expect(values).not.toContain(transient)
+    }
+  })
+
+  it('status 必填、note 可选（optional 不进 required）', () => {
+    const parameters = toolNamed(`${TOOL_PREFIX}key_redeem`).parameters
+    expect(parameters.required ?? []).toContain('status')
+    expect(parameters.required ?? []).not.toContain('note')
   })
 })
 

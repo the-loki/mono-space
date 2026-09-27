@@ -3,7 +3,7 @@ import type { KeyPage, KeyQuery, OrderSummary } from '../main/data/types'
 import type { AgentRunResult, AgentStatus } from '../main/ipc/agent'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
 import type { SyncIpcResult } from '../main/ipc/sync'
-import type { LoginWindowResult, TaskIpcResult } from '../main/ipc/tasks'
+import type { LoginWindowResult } from '../main/ipc/tasks'
 import type { AgentLogSnapshot, MonoSpaceApi } from '../shared/ipc-contract'
 
 const api: MonoSpaceApi = {
@@ -33,6 +33,9 @@ const api: MonoSpaceApi = {
     /** 内置任务：揭示单条 key（不可逆）。 */
     revealKey: (keyId: number): Promise<AgentRunResult> =>
       ipcRenderer.invoke('agent:reveal-key', keyId),
+    /** 内置任务：兑换单条 key（提交由 agent 在页面上完成，工具只登记结果）。 */
+    redeemKey: (keyId: number): Promise<AgentRunResult> =>
+      ipcRenderer.invoke('agent:redeem-key', keyId),
     /** 调试日志快照（记录最新在前 + 运行状态）：仅主进程内存，进程内有效。 */
     log: (): Promise<AgentLogSnapshot> => ipcRenderer.invoke('agent:log'),
     /** 清空调试日志。 */
@@ -42,11 +45,10 @@ const api: MonoSpaceApi = {
   debug: {
     open: (): Promise<void> => ipcRenderer.invoke('debug:open'),
   },
-  /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
+  /** 动作：登录（会打开可见窗口供人接管）。 */
   tasks: {
     /** 打开 Humble / Epic 登录页（登录态落在应用私有分区）。 */
     login: (): Promise<LoginWindowResult[]> => ipcRenderer.invoke('tasks:login'),
-    redeem: (keyId: number): Promise<TaskIpcResult> => ipcRenderer.invoke('tasks:redeem', keyId),
   },
 }
 

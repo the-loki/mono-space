@@ -19,7 +19,7 @@ interface OrderKeysPageProps {
   onBack: () => void
   /** 揭示（走内置任务，不可逆）。 */
   onReveal: (keyId: number) => Promise<void>
-  /** 兑换（走既有链路）。 */
+  /** 兑换（走内置任务；提交由 agent 在页面上完成，工具只登记结果）。 */
   onRedeem: (keyId: number) => Promise<void>
 }
 
@@ -65,7 +65,7 @@ export function OrderKeysPage({
     setScrollTop(event.currentTarget.scrollTop)
   }, [])
 
-  // 揭示 / 兑换：打开可见窗口供人接管；返回后刷新这一单。
+  // 揭示 / 兑换：都走内置任务（agent 可能打开可见窗口供人接管登录）；返回后刷新这一单。
   const handleAction = useCallback(
     async (action: LedgerAction, item: LedgerListItem) => {
       setBusyKeyId(item.id)

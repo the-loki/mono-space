@@ -10,6 +10,7 @@
  */
 import { type TObject, Type } from 'typebox'
 import type { PageOrderRead } from '../data/page-ingest'
+import type { RedeemStatus } from '../data/types'
 import type { BrowserHost } from './host-contract'
 import { createBrowserTools } from './tools-browser'
 
@@ -47,14 +48,30 @@ export interface BrowserNavResult {
   status: number
 }
 
-/** 动作结果（揭示/兑换：可能停在人在环路）。 */
-export interface ActionOutcome {
-  status: string
-  pause?: string
-  code?: string
-  attempts: number
+/** 兑换结果**登记**的结果（不代替提交，见 ADR-0005）。 */
+export interface RedeemRecordResult {
+  /** 是否真的写进了台账（找不到该 key 时为 false）。 */
+  ok: boolean
+  keyId: number
+  status: RedeemStatus
   note: string
 }
+
+/**
+ * agent 可登记的兑换结果状态：**逐字复用台账已有的兑换状态词汇**
+ * （`data/types.ts` 的 `REDEEM_STATUSES`），不发明新值。
+ * 只收「结果」——`precheck` / `probing` / `redeeming` 是应用内部的过渡态，不属于结果。
+ */
+export const REDEEM_RECORDABLE_STATUSES = [
+  'not_redeemed',
+  'redeemed',
+  'already_owned',
+  'invalid',
+  'used',
+  'expired',
+  'region_blocked',
+  'needs_human',
+] as const
 
 /** `keys_upsert` 的单条输入。 */
 export interface KeyUpsertEntry {
@@ -85,7 +102,12 @@ export interface McpHost extends BrowserHost {
   keysIngest(read: PageOrderRead): Promise<unknown>
   /** 打开某条 key 的**订单专属页**（只开页面、不做任何点击），把后续操作交给 agent。 */
   keyOpen(keyId: number): Promise<KeyOpenResult>
-  keyRedeem(keyId: number): Promise<ActionOutcome>
+  /** **登记**一次兑换结果（写台账 + 留痕）；真正的提交由 agent 在页面上完成。 */
+  keyRedeem(input: {
+    keyId: number
+    status: RedeemStatus
+    note?: string
+  }): Promise<RedeemRecordResult>
 }
 
 /** `keyOpen` 的结果：agent 接下来就在这个页面上干活。 */
@@ -289,12 +311,44 @@ function createDomainTools(host: McpHost): ToolSpec[] {
     },
     {
       name: `${TOOL_PREFIX}key_redeem`,
-      title: 'MonoSpace 兑换某个 key（不可逆）',
+      title: 'MonoSpace 登记某条 key 的兑换结果',
       description:
-        '让 MonoSpace 执行一次**兑换**（Epic 兑换页 + My Library 校验）。会打开可见窗口；如需登录/验证码/条款确认，会停在**人在环路**并把 pause 原因回给你。',
-      layer: 'L2',
-      parameters: Type.Object({ keyId: Type.Integer({ minimum: 1 }) }),
-      run: (input) => host.keyRedeem(input.keyId as number),
+        '把**你已经在页面上完成**的那次兑换结果**登记**进 MonoSpace 台账（写状态 + 强制留痕）。\n' +
+        '**这是登记，不会替你提交**：提交（填码 / 点提交）靠你在页面上用 monospace_act 自己完成。\n' +
+        '用法：monospace_key_open(keyId) 打开那一单订单页 → 必要时先按页面自己的控件揭示拿到码 →\n' +
+        '读那一行的「Redemption Instructions」链接决定去哪家商店 → 用页面自己的控件填码、提交 →\n' +
+        '**从页面读出结果** → 再用本工具把结果写回台账。\n' +
+        'status 只能取台账已有的兑换状态词： redeemed（已兑换）/ already_owned（已拥有）/ invalid（无效）/\n' +
+        'used（已使用）/ expired（已过期）/ region_blocked（区域受限）/ needs_human（待人工）/ not_redeemed（未兑换）。\n' +
+        '**不填中间态**（预检中 / 试探中 / 兑换中）：那是应用内部的过渡，不是结果。\n' +
+        '提交不可逆：**只提交一次**；遇到验证码 / 需要确认条款 / 认不出页面或读不出结果时，\n' +
+        '**停下来告诉用户**，不要用本工具猜一个状态。',
+      layer: 'L1',
+      parameters: Type.Object({
+        keyId: Type.Integer({ minimum: 1, description: '台账里的 key id（先 ledger_query 拿）' }),
+        status: Type.Union(
+          [
+            Type.Literal('not_redeemed'),
+            Type.Literal('redeemed'),
+            Type.Literal('already_owned'),
+            Type.Literal('invalid'),
+            Type.Literal('used'),
+            Type.Literal('expired'),
+            Type.Literal('region_blocked'),
+            Type.Literal('needs_human'),
+          ],
+          { description: '你在页面上读到的兑换结果（只用台账已有的状态词）' },
+        ),
+        note: Type.Optional(
+          Type.String({ description: '页面上看到的原文或简短说明（可选，便于事后核对）' }),
+        ),
+      }),
+      run: (input) =>
+        host.keyRedeem({
+          keyId: input.keyId as number,
+          status: input.status as RedeemStatus,
+          note: input.note as string | undefined,
+        }),
     },
   ]
 }

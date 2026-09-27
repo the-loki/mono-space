@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readOrderKeysPrompt, revealKeyPrompt } from '../prompts'
+import { readOrderKeysPrompt, redeemKeyPrompt, revealKeyPrompt } from '../prompts'
 
 describe('按订单读 key 的内置任务提示词', () => {
   const prompt = readOrderKeysPrompt('TXzbXSpBc3qfUc3M')
@@ -55,5 +55,48 @@ describe('揭示单条 key 的内置任务提示词', () => {
     expect(prompt).toContain('不要用接口取码')
     expect(prompt).toContain('交人工')
     expect(prompt).toContain('简体中文')
+  })
+})
+
+describe('兑换单条 key 的内置任务提示词（代理驱动）', () => {
+  const prompt = redeemKeyPrompt(42)
+
+  it('带上了 keyId，并给出「打开订单页 → 必要时先揭示 → 拿码」的路径', () => {
+    expect(prompt).toContain('keyId=42')
+    expect(prompt).toContain('monospace_key_open')
+    expect(prompt).toContain('Redemption Instructions')
+    // 未揭示时先揭示，且揭示只点一次。
+    expect(prompt).toContain('尚未揭示')
+    expect(prompt).toContain('只点一次')
+  })
+
+  it('要求用页面自己的控件提交，且明确「只提交一次」', () => {
+    expect(prompt).toContain('页面自己的控件')
+    expect(prompt).toContain('只提交一次')
+    expect(prompt).toContain('不可逆')
+  })
+
+  it('结果从页面读出，再用 key_redeem 登记（登记不代替提交）', () => {
+    expect(prompt).toContain('从页面读出结果')
+    expect(prompt).toContain('monospace_key_redeem')
+    expect(prompt).toContain('登记')
+    expect(prompt).toContain('不会替你提交')
+    // 状态词复用台账已有的兑换状态。
+    expect(prompt).toContain('redeemed')
+    expect(prompt).toContain('needs_human')
+  })
+
+  it('认不出或读不出就停下交人工，绝不猜、绝不重放提交', () => {
+    expect(prompt).toContain('验证码')
+    expect(prompt).toContain('需要确认条款')
+    expect(prompt).toContain('认不出页面结构或读不出结果')
+    expect(prompt).toContain('停下来报告交人工')
+    expect(prompt).toContain('绝不猜')
+    expect(prompt).toContain('绝不重放提交')
+  })
+
+  it('沿用纪律：只用简体中文 / 不用接口取码', () => {
+    expect(prompt).toContain('只用简体中文作答，一个英文词都不要出现')
+    expect(prompt).toContain('不要用接口取码')
   })
 })

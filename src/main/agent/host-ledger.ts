@@ -1,16 +1,19 @@
 /**
- * 台账适配器：MonoSpace 自有的领域能力——统计 / 查询 / 同步 / 落库 / 揭示 / 兑换。
+ * 台账适配器：MonoSpace 自有的领域能力——统计 / 查询 / 同步 / 落库 / 揭示 / 兑换登记。
  *
- * 与浏览器适配器的分界：这里只碰台账与数据来源（仓储 / 同步 / 兑换 / 订单页入口），
+ * 与浏览器适配器的分界：这里只碰台账与数据来源（仓储 / 同步 / 订单页入口），
  * 页面状态与快照引用全部归 `host-browser.ts`。ADR-0003 的**唯一落库入口** `keysIngest`
  * 就在这一半；它落库后还会合并一次接口补充（ADR-0004，合并逻辑本身是纯函数）。
+ *
+ * 兑换已改为**代理驱动**（ADR-0005）：真正的提交由 agent 在页面上完成，这里只负责
+ * `key_open` 备好工作台、`keyRedeem` 把结果**登记**回台账。
  */
 import { getStoreSession } from '../browser/store-session'
 import { humbleOrderUrl } from '../browser/store-urls'
 import { openStoreView } from '../browser/store-view'
+import { REDEEM_STATUSES } from '../data/types'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
-import { runRedeem } from '../ipc/tasks'
 import { ingestPageOrder } from '../sync/ingest-page-order'
 import type { AuditLogger } from './host-audit'
 import type { LedgerRow, McpHost, UpsertResult } from './tools'
@@ -160,15 +163,30 @@ export function createLedgerHost(audit: AuditLogger): LedgerHost {
       }
     },
 
-    async keyRedeem(keyId) {
-      const outcome = await runRedeem(keyId)
+    /**
+     * **登记**一次兑换结果——真正的提交由 agent 在页面上完成（ADR-0005）。
+     *
+     * 只写台账、并强制留痕；不会替调用方提交任何东西。状态取值只认仓储已有的
+     * `RedeemStatus`（`REDEEM_STATUSES`），未知值直接报错，免得台账被写进脏状态。
+     */
+    async keyRedeem({ keyId, status, note }) {
+      if (!REDEEM_STATUSES.includes(status)) {
+        throw new Error(`未知的兑换状态：${status}`)
+      }
+      const written = repository.setRedeemStatus(keyId, status)
       await audit({
         at: new Date().toISOString(),
         tool: 'key_redeem',
         keyIds: [keyId],
-        written: 1,
+        written: written ? 1 : 0,
+        detail: { status, note: note ?? null },
       })
-      return outcome
+      return {
+        ok: written,
+        keyId,
+        status,
+        note: written ? (note ?? '') : `台账里没有 keyId=${keyId}，未写入`,
+      }
     },
   }
 }

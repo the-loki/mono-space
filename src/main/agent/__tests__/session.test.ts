@@ -25,7 +25,7 @@ afterEach(async () => {
 })
 
 describe('createEmbeddedAgent', () => {
-  it('注入 MonoSpace 自己的工具，且挡住不可逆的 L2', async () => {
+  it('注入 MonoSpace 自己的工具，且不把宿主侧不可逆动作交给模型', async () => {
     const userDataDir = await mkdtemp(join(tmpdir(), 'monospace-agent-'))
     cleanup = userDataDir
     await writeAgentConfig(agentPaths(userDataDir), {
@@ -49,10 +49,10 @@ describe('createEmbeddedAgent', () => {
       // 开场入口：一个页面都没打开时，agent 必须能自己开一张（否则空台账时无从下手）。
       expect(names).toContain('monospace_page_open')
       expect(names).toContain('monospace_keys_ingest')
+      // 兑换已改为代理驱动（ADR-0005）：不可逆的**提交**由 agent 在页面上完成，
+      // monospace_key_redeem 降为 L1（只把结果登记回台账），必须可达，否则 agent 写不回去。
+      expect(names).toContain('monospace_key_redeem')
       expect(names).not.toContain('monospace_key_reveal')
-
-      // 兑换仍是 L2，仍然不给模型。
-      expect(names).not.toContain('monospace_key_redeem')
 
       // Pi 自带工具必须一个都没有（noTools: 'builtin'）。
       for (const builtin of ['read', 'bash', 'edit', 'write', 'ls', 'grep']) {

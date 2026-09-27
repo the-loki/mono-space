@@ -29,6 +29,9 @@ APPIMAGE_EXTENSIONS=["MonoSpace store helper"]
 ```
 
 即：AppImage 能拉起、主窗口标题正确，且打包进去的两个 MV3 扩展都能被**加载**。
+（**2026-09-27 更新**：兑换改为代理驱动后，打包**不再带任何 MV3 扩展**（ADR-0005），
+上面这份输出是当时的记录；MV3 装载能力仍由 `browser/extension-host.ts` +
+`tests/e2e/browser-skeleton.spec.ts` 的夹具验证。）
 （本机 `kernel.apparmor_restrict_unprivileged_userns=1`，`chrome-sandbox` 不可用，
 故用 `--no-sandbox`；Ubuntu 24+ 的 AppRun 会自动补这个参数——见 `docs/verify/17-electron-packaging.md`。）
 
@@ -110,7 +113,7 @@ SYNC_RESULT={"ok":false,"reason":"not-logged-in","message":"未登录 Humble（�
 | Epic **2FA 的实际方法**与「约 30 天重索」的实测 | `#18` | `docs/verify/18-epic-redemption-errors.md` |
 | Humble 订单列表**是否真的无服务端分页**、真实库耗时/内存 | `#22` | `docs/research/humble-reveal.md` |
 | 揭示控件定位（已实测，见下节）| `#25` | 已由 agent 接管（原 `src/main/reveal/` 已删） |
-| Epic 兑换页 DOM 选择器校准 | `#26` | `src/main/redeem/parse-report.ts` |
+| Epic 兑换页 DOM 选择器校准 | `#26` | 已随代码驱动栈删除（ADR-0005；现行见 `docs/spec/12` §11） |
 
 ### 2.3 端到端
 
@@ -203,3 +206,20 @@ UI 的「揭示」按钮改为**把任务交给 agent**（`agent:run` + 一段�
 的强制约束一起删掉了，现在靠提示词和 agent 遵守。
 
 > 仍未实测：**一次全新的揭示点击**（打开 → 点 → 读到码 → 写回）。这是唯一不可逆的一步，尚未执行。
+
+## 兑换也改为代理驱动（2026-09-27 追加，ADR-0005）
+
+与揭示同构的改动：**兑换**的代码驱动栈（`src/main/redeem/**`：状态机 / 错误码表 /
+页面驱动 / 回执解析 / 库校验 / 命令通道 / 页面扩展 / 8 个测试）、只服务它的扩展基建
+（`browser/bundled-extensions.ts`、`browser/extension-path.ts`、`electron-builder.yml` 的
+`extraResources`）与 `tasks:redeem` 通道**已整体删除**。
+
+现在：`monospace_key_open(keyId)` 打开订单页 → 必要时先揭示拿码 → 读那一行的
+「Redemption Instructions」链接决定去哪家商店 → 用**页面自己的控件**填码、提交 →
+从页面读出结果 → `monospace_key_redeem` **只登记结果**（写台账 + 强制留痕）。
+`monospace_key_redeem` 因此从 L2 降到 **L1**（留在 L2 则 agent 根本用不上）。
+
+保留：`tasks:login`（登录是**人**的动作）；`browser/extension-host.ts` 与
+`tests/fixtures/extension-mv3*/**`（通用 MV3 能力，e2e 依赖）。
+代价：判据从可复现代码变成模型判断；不可逆动作的纪律只能靠提示词与审计。
+

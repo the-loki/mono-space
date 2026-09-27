@@ -4,6 +4,12 @@
 - 验证日期：2026-09-26
 - 方法：**不登录**，直接取 Epic 自家前端 localization bundle（`window.EGStoreCtx.localizationData.messages`），并用真实 Chromium 复取 2026 现行版本。原票要求「人工登录一次」才能拿到的错误枚举，实际可从 Epic 自己的公开前端数据取得，且比逐条手点更完整。
 
+> **状态更新（2026-09-27）**：本报告的**证据仍然成立**（26 条错误码与文案、2FA 形态、风控事实），
+> 但它原来服务的那条**代码驱动归类链已删除**（ADR-0005）。现在兑换改为**代理驱动**：
+> 分类由 agent 看着页面原文自己判，错误码表不再被任何代码引用，仅作**参考材料**
+> 供 agent （和排查的人）读懂页面报错。§2 的「归类→状态机输入」因此是**历史映射**，
+> 不是现行实现；现行形态见 `docs/spec/12` §11。
+
 ---
 
 ## 0. 结论先行
@@ -79,13 +85,17 @@
 | `epic.store.redemptionForm.status.success.description` | Open the launcher to start downloading the game. |
 | `epic.store.redemptionForm.status.confirm.msg.fnCrew` | By redeeming this code, I agree to the [EULA](…) and the [Fortnite Crew Terms](…) |
 
-> 注意：以上是 **Epic Games Store（`store.epicgames.com`）** 的兑换表单文案。项目实际要走的是 **账号侧兑换页 `epicgames.com/account/code-redemption`**（见 §3），两处 UI 文案可能不同；但**后端错误码是同一套**（`errors.com.epicgames.coderedemption.*` 是服务端标识）。实现期以**页面渲染文本**为准做兜底、以**错误码**为准做主判定。
+> 注意：以上是 **Epic Games Store（`store.epicgames.com`）** 的兑换表单文案。项目实际要走的是 **账号侧兑换页 `epicgames.com/account/code-redemption`**（见 §3），两处 UI 文案可能不同；但**后端错误码是同一套**（`errors.com.epicgames.coderedemption.*` 是服务端标识）。
+> （原文此处写「实现期以页面渲染文本为准做兜底、以错误码为准做主判定」——那属已删除的代码驱动栈；现在由 agent 读页面原文自己判，见文首状态更新。）
 >
 > `status.confirm.msg.fnCrew` 佐证兑换存在**显式确认/同意步骤**（至少对需要 EULA 的商品），与 Humble 文档的「Redeem → 再点 Confirm」两步一致。
 
 ---
 
 ## 2. 归类 → 结果状态机输入（给 #12）
+
+> ⚠️ **历史映射（ADR-0005）**：下表曾是代码里的归类表（已随 `status.ts` 删除）。
+> 现在的分类由 agent 在页面上完成；下表仍可当作「错误码 ↔ 结果状态」的参考词表。
 
 把 §1 的 26 条码归成 7 类，作为状态机的分类输入：
 

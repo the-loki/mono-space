@@ -8,13 +8,14 @@ import { ipcMain } from 'electron'
 import type { AgentRunResult, AgentStatus, AgentToolCall } from '../../shared/ipc-contract'
 import { agentPaths, readAgentConfig } from '../agent/config'
 import { createAgentLogBuffer } from '../agent/log-buffer'
-import { readOrderKeysPrompt, revealKeyPrompt } from '../agent/prompts'
+import { readOrderKeysPrompt, redeemKeyPrompt, revealKeyPrompt } from '../agent/prompts'
 import { createEmbeddedAgent } from '../agent/session'
 import type { McpHost } from '../agent/tools'
 
 // 内置任务：提示词与输出 schema 都在主进程侧，渲染层只传标识（gamekey / keyId）。
 export const AGENT_READ_ORDER_KEYS_CHANNEL = 'agent:read-order-keys'
 export const AGENT_REVEAL_KEY_CHANNEL = 'agent:reveal-key'
+export const AGENT_REDEEM_KEY_CHANNEL = 'agent:redeem-key'
 export const AGENT_STATUS_CHANNEL = 'agent:status'
 export const AGENT_LOG_CHANNEL = 'agent:log'
 export const AGENT_LOG_CLEAR_CHANNEL = 'agent:log-clear'
@@ -91,6 +92,7 @@ export async function runAgent(options: {
 export function registerAgentIpc(options: { userDataDir: string; getHost: () => McpHost }): void {
   ipcMain.removeHandler(AGENT_READ_ORDER_KEYS_CHANNEL)
   ipcMain.removeHandler(AGENT_REVEAL_KEY_CHANNEL)
+  ipcMain.removeHandler(AGENT_REDEEM_KEY_CHANNEL)
   ipcMain.removeHandler(AGENT_STATUS_CHANNEL)
   ipcMain.removeHandler(AGENT_LOG_CHANNEL)
   ipcMain.removeHandler(AGENT_LOG_CLEAR_CHANNEL)
@@ -106,6 +108,14 @@ export function registerAgentIpc(options: { userDataDir: string; getHost: () => 
   ipcMain.handle(AGENT_REVEAL_KEY_CHANNEL, (_event, keyId: number) =>
     runAgent({
       prompt: revealKeyPrompt(keyId),
+      userDataDir: options.userDataDir,
+      host: options.getHost(),
+    }),
+  )
+  // 兑换单条 key（代理驱动：提交在页面上由 agent 完成，工具只登记结果）。
+  ipcMain.handle(AGENT_REDEEM_KEY_CHANNEL, (_event, keyId: number) =>
+    runAgent({
+      prompt: redeemKeyPrompt(keyId),
       userDataDir: options.userDataDir,
       host: options.getHost(),
     }),
