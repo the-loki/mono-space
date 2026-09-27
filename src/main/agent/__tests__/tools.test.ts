@@ -538,3 +538,83 @@ describe('keys_upsert 的无码缘由（可选 + 收敛后转发）', () => {
     ])
   })
 })
+
+/**
+ * 覆盖率审计（`job_mujasg38_8`，只读）指出这四个工具的 **handler 从未被执行过**：
+ * 测试只断言了它们的层级与 schema 形状，没跑过 `run`。这里补上行为断言。
+ */
+describe('工具行为：审计点名未被执行过的 handler', () => {
+  it('ledger_stats 原样转发宿主的统计结果（不多不少）', async () => {
+    const host = fakeHost()
+    const result = await toolNamed(`${TOOL_PREFIX}ledger_stats`, host).run({})
+    expect(host.ledgerStats).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({
+      total: 10,
+      unrevealed: 3,
+      revealedUnredeemed: 6,
+      redeemed: 1,
+    })
+  })
+
+  it('orders_sync 原样转发宿主的同步结果', async () => {
+    const host = fakeHost({ ordersSync: vi.fn(async () => ({ orders: { inserted: 2 } })) })
+    const result = await toolNamed(`${TOOL_PREFIX}orders_sync`, host).run({})
+    expect(host.ordersSync).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ orders: { inserted: 2 } })
+  })
+
+  it('screenshot 有内联图数据时返回**图片内容块**，不塞进 JSON', async () => {
+    const host = fakeHost({
+      browserTakeScreenshot: vi.fn(async () => ({
+        pageId: 1,
+        format: 'jpeg',
+        bytes: 3,
+        data: 'QUJD',
+      })),
+    })
+    const result = await toolNamed(`${TOOL_PREFIX}screenshot`, host).run({ format: 'jpeg' })
+    expect(result).toEqual({
+      content: [{ type: 'image', data: 'QUJD', mimeType: 'image/jpeg' }],
+    })
+    // 参数要透传（uid/fullPage/quality/filePath 都是 agent 会用的）。
+    expect(host.browserTakeScreenshot).toHaveBeenCalledWith({
+      uid: undefined,
+      fullPage: undefined,
+      format: 'jpeg',
+      quality: undefined,
+      filePath: undefined,
+    })
+  })
+
+  it('screenshot 存成文件（没有内联数据）时原样返回路径与字节数', async () => {
+    const host = fakeHost({
+      browserTakeScreenshot: vi.fn(async () => ({
+        pageId: 1,
+        format: 'png',
+        bytes: 11,
+        path: '/tmp/shot.png',
+      })),
+    })
+    const result = await toolNamed(`${TOOL_PREFIX}screenshot`, host).run({
+      filePath: '/tmp/shot.png',
+    })
+    expect(result).toEqual({ pageId: 1, format: 'png', bytes: 11, path: '/tmp/shot.png' })
+  })
+
+  it('errors 转发过滤条件并原样返回宿主给的错误清单', async () => {
+    const host = fakeHost()
+    const result = await toolNamed(`${TOOL_PREFIX}errors`, host).run({
+      types: ['error'],
+      includeStackTraces: true,
+      limit: 5,
+    })
+    // 三个可选参数都要透传（agent 靠它们收窄噪声）。
+    expect(host.browserErrors).toHaveBeenCalledWith({
+      types: ['error'],
+      includeStackTraces: true,
+      limit: 5,
+    })
+    // 原样返回，不重新包装（宿主给的结构就是给 agent 看的）。
+    expect(result).toEqual({ pageId: 1, url: 'u', errors: [], failedRequests: [] })
+  })
+})
