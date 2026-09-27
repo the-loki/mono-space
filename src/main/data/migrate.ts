@@ -71,6 +71,17 @@ export const MIGRATIONS: readonly Migration[] = [
           )
       `),
   },
+  {
+    version: 5,
+    name: 'drop-order-purchased-currency',
+    // 购买时间 / 币种：同步从不提供，页面读取也不给（ADR-0003），实测库里 68 单全为 NULL —— 死列。
+    // 从表里删掉，避免继续误导界面 / 导出。硬编码列名：迁移是冻结的历史，不随常量漂移。
+    up: (db) =>
+      db.exec(`
+        ALTER TABLE orders DROP COLUMN purchased_at;
+        ALTER TABLE orders DROP COLUMN currency;
+      `),
+  },
 ]
 
 /** 读取当前 schema 版本；schema_version 表不存在时视为 0。 */

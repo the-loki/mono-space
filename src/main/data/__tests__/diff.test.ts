@@ -7,7 +7,6 @@ function order(remoteId: string, productName = `订单 ${remoteId}`): SyncedOrde
   return {
     remoteId,
     productName,
-    purchasedAt: '2026-09-01T00:00:00.000Z',
     bundles: [
       {
         remoteId: `${remoteId}-bundle`,

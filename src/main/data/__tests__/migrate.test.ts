@@ -62,6 +62,12 @@ function keyRemoteIds(db: DatabaseSync): string[] {
   return rows.map((row) => row.remote_id)
 }
 
+/** 列出某张表的列名。 */
+function tableColumns(db: DatabaseSync, table: string): string[] {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  return rows.map((row) => row.name)
+}
+
 describe('迁移', () => {
   it('首次迁移建出全部台账表并记录版本', () => {
     const db = memoryDb()
@@ -69,7 +75,7 @@ describe('迁移', () => {
 
     expect(result.from).toBe(0)
     expect(result.to).toBe(SCHEMA_VERSION)
-    // 新库要把全部迁移按顺序跑完（v1 建表 + v2 加 platform 列 + v3 删 engine 列）。
+    // 新库要把全部迁移按顺序跑完（v1 建表 + v2 加 platform 列 + v3 删 engine 列 + v4 修数据 + v5 删死列）。
     expect(result.applied).toEqual(MIGRATIONS.map((migration) => migration.version))
     expect(currentSchemaVersion(db)).toBe(SCHEMA_VERSION)
 
@@ -152,14 +158,14 @@ describe('迁移', () => {
     const bundle3 = seedBundle(db, order3, 'order_3_page')
     seedKey(db, bundle3, 'api:y#0', 'E')
 
-    const result = migrate(db)
+    const result = migrate(db, MIGRATIONS.slice(0, 4))
     expect(result.from).toBe(3)
     expect(result.applied).toEqual([4])
     expect(currentSchemaVersion(db)).toBe(4)
     expect(keyRemoteIds(db)).toEqual(['alpha', 'api:c#0', 'api:x#0', 'api:y#0', 'beta'])
 
     // 幂等：再跑一次没有任何变化。
-    const again = migrate(db)
+    const again = migrate(db, MIGRATIONS.slice(0, 4))
     expect(again.applied).toEqual([])
     expect(keyRemoteIds(db)).toEqual(['alpha', 'api:c#0', 'api:x#0', 'api:y#0', 'beta'])
     db.close()
@@ -167,9 +173,61 @@ describe('迁移', () => {
 
   it('v4 对没有重复补充行的库无副作用（空库也安全）', () => {
     const db = memoryDb()
-    migrate(db)
+    migrate(db, MIGRATIONS.slice(0, 4))
     expect(currentSchemaVersion(db)).toBe(4)
     expect(keyRemoteIds(db)).toEqual([])
+    db.close()
+  })
+
+  it('v5 删掉 orders 的购买时间 / 币种两列（死列）', () => {
+    const db = memoryDb()
+    // 先升到 v4（v5 之前的历史 schema）：这两列在冻结的 v1 建表时就存在。
+    migrate(db, MIGRATIONS.slice(0, 4))
+    expect(tableColumns(db, 'orders')).toContain('purchased_at')
+    expect(tableColumns(db, 'orders')).toContain('currency')
+
+    const result = migrate(db)
+    expect(result.from).toBe(4)
+    expect(result.applied).toEqual([5])
+    expect(currentSchemaVersion(db)).toBe(5)
+    expect(tableColumns(db, 'orders')).not.toContain('purchased_at')
+    expect(tableColumns(db, 'orders')).not.toContain('currency')
+
+    // 幂等：已经是 v5 的库再跑一次无副作用，列依旧不存在。
+    const again = migrate(db)
+    expect(again.applied).toEqual([])
+    expect(tableColumns(db, 'orders')).not.toContain('purchased_at')
+    expect(tableColumns(db, 'orders')).not.toContain('currency')
+    db.close()
+  })
+
+  it('全新空库跑完迁移链，orders 也没有购买时间 / 币种两列', () => {
+    // 新库从**冻结的 v1** 建表，所以这两列一开始是存在的，必须由 v5 掉掉。
+    const db = memoryDb()
+    migrate(db)
+    expect(currentSchemaVersion(db)).toBe(5)
+    expect(tableColumns(db, 'orders')).not.toContain('purchased_at')
+    expect(tableColumns(db, 'orders')).not.toContain('currency')
+    db.close()
+  })
+
+  it('v5 删列不丢订单数据（v4 已有订单仍完整）', () => {
+    const db = memoryDb()
+    migrate(db, MIGRATIONS.slice(0, 4))
+    db.prepare(
+      `INSERT INTO orders
+         (account_id, remote_id, product_name, purchased_at, currency,
+          first_seen_at, last_seen_at, created_at, updated_at)
+       VALUES ('default', 'ORDER-1', '示例订单', '2026-09-01T00:00:00.000Z', 'USD', ?, ?, ?, ?)`,
+    ).run(SEED_TIME, SEED_TIME, SEED_TIME, SEED_TIME)
+
+    migrate(db)
+
+    const row = db.prepare('SELECT remote_id, product_name FROM orders').get() as {
+      remote_id: string
+      product_name: string
+    }
+    expect(row).toEqual({ remote_id: 'ORDER-1', product_name: '示例订单' })
     db.close()
   })
 

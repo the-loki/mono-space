@@ -55,7 +55,6 @@ export function toKeyListItem(item: KeyListItem): KeyListItem {
     orderId: item.orderId,
     orderRemoteId: item.orderRemoteId,
     orderProductName: item.orderProductName,
-    orderPurchasedAt: item.orderPurchasedAt,
     bundleId: item.bundleId,
     bundleRemoteId: item.bundleRemoteId,
     bundleName: item.bundleName,

@@ -1,9 +1,9 @@
 /**
- * 订单主视图（ADR-0003）：一单一行，显示商品名 / 购买时间 / key 计数，并提供
+ * 订单主视图（ADR-0003）：一单一行，显示商品名 / key 计数，并提供
  * 「读取并揭示本单 key」（触发内置任务）与进入明细的入口。
  *
  * 纯展示组件：数据由 `LedgerPage` 持有（这样同步 / 读取完成后能统一刷新）。
- * 同步只提供 gamekey，所以读过页面之前商品名显示「未读取」、购买时间不显示。
+ * 同步只提供 gamekey，所以读过页面之前商品名显示「未读取」。
  */
 import type { JSX } from 'react'
 import { IconAlert, IconInbox } from '../ui/icons'
@@ -21,8 +21,7 @@ interface OrdersPageProps {
 }
 
 /** 行网格：与表头共用，保证列对齐。 */
-const GRID =
-  'grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.5fr)_8.5rem_10rem_12rem] items-center gap-3'
+const GRID = 'grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.5fr)_10rem_12rem] items-center gap-3'
 
 /** 空态 / 错误态里的圆形图标底。 */
 const STATE_ICON =
@@ -30,11 +29,6 @@ const STATE_ICON =
 
 /** 居中的状态块（空 / 载入 / 错误共用一套排版）。 */
 const STATE_BLOCK = 'flex h-full flex-col items-center justify-center gap-2 px-6 text-center'
-
-/** ISO 时间只显示日期部分（无时区换算，稳定）。 */
-function shortDate(at: string | null): string {
-  return at ? at.slice(0, 10) : ''
-}
 
 /** 订单主视图。 */
 export function OrdersPage({
@@ -58,7 +52,6 @@ export function OrdersPage({
         >
           <span>商品</span>
           <span>订单</span>
-          <span>购买时间</span>
           <span>key</span>
           <span>动作</span>
         </div>
@@ -114,9 +107,6 @@ export function OrdersPage({
               </span>
               <span className="truncate font-mono text-ink-3 text-xs" title={order.orderRemoteId}>
                 {order.orderRemoteId}
-              </span>
-              <span className="tabular-nums text-ink-3 text-xs">
-                {shortDate(order.purchasedAt) || '—'}
               </span>
               <span className="tabular-nums text-ink-2 text-xs" data-testid="order-key-count">
                 {order.keyCount} 个 key·{order.unrevealedCount} 个未揭示

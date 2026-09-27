@@ -47,7 +47,6 @@ export interface KeyListItem {
   orderId: number
   orderRemoteId: string
   orderProductName: string | null
-  orderPurchasedAt: string | null
   bundleId: number
   bundleRemoteId: string
   bundleName: string | null
@@ -87,7 +86,7 @@ export interface KeyPage {
 /**
  * 订单列表项（带 key 计数）：界面主视图用。
  *
- * 同步只提供 gamekey，商品名 / 购买时间要等页面读过才有，所以它们可能为 null；
+ * 同步只提供 gamekey，商品名要等页面读过才有，所以它可能为 null；
  * 同理订单在读过页面前 keyCount 为 0，也必须出现在列表里（查询用 LEFT JOIN）。
  */
 export interface OrderSummary {
@@ -95,7 +94,6 @@ export interface OrderSummary {
   orderId: number
   orderRemoteId: string
   productName: string | null
-  purchasedAt: string | null
   /** 该订单下的 key 总数。 */
   keyCount: number
   unrevealedCount: number

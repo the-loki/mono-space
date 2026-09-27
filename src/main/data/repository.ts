@@ -64,7 +64,6 @@ const KEY_LIST_COLUMNS = `
   o.id AS order_id,
   o.remote_id AS order_remote_id,
   o.product_name AS order_product_name,
-  o.purchased_at AS order_purchased_at,
   b.id AS bundle_id,
   b.remote_id AS bundle_remote_id,
   b.name AS bundle_name,
@@ -167,44 +166,23 @@ export class LedgerRepository {
     if (existing) {
       const id = Number(existing.id)
       // COALESCE：同步只给 gamekey（其余字段是 undefined→null），不能把页面写入的
-      // 商品名 / 购买时间 / 币种覆盖掉（ADR-0003：页面是 key 与资产包的权威来源）。
+      // 商品名覆盖掉（ADR-0003：页面是 key 与资产包的权威来源）。
       this.stmt(
         `UPDATE orders
            SET product_name = COALESCE(?, product_name),
-               purchased_at = COALESCE(?, purchased_at),
-               currency = COALESCE(?, currency),
                raw_json = ?,
                last_seen_at = ?, updated_at = ?
          WHERE id = ?`,
-      ).run(
-        nullable(order.productName),
-        nullable(order.purchasedAt),
-        nullable(order.currency),
-        rawJson,
-        now,
-        now,
-        id,
-      )
+      ).run(nullable(order.productName), rawJson, now, now, id)
       return { id, inserted: false }
     }
 
     const result = this.stmt(
       `INSERT INTO orders
-         (account_id, remote_id, product_name, purchased_at, currency, raw_json,
+         (account_id, remote_id, product_name, raw_json,
           first_seen_at, last_seen_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      this.accountId,
-      order.remoteId,
-      nullable(order.productName),
-      nullable(order.purchasedAt),
-      nullable(order.currency),
-      rawJson,
-      now,
-      now,
-      now,
-      now,
-    )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(this.accountId, order.remoteId, nullable(order.productName), rawJson, now, now, now, now)
     return { id: Number(result.lastInsertRowid), inserted: true }
   }
 
@@ -442,7 +420,6 @@ export class LedgerRepository {
               o.account_id AS account_id,
               o.remote_id AS order_remote_id,
               o.product_name AS product_name,
-              o.purchased_at AS purchased_at,
               COUNT(k.id) AS key_count,
               COUNT(CASE WHEN k.reveal_status = 'unrevealed' THEN 1 END) AS unrevealed_count,
               COUNT(CASE WHEN k.reveal_status = 'revealed' THEN 1 END) AS revealed_count
@@ -539,8 +516,6 @@ export class LedgerRepository {
               k.account_id AS account_id,
               o.remote_id AS order_remote_id,
               o.product_name AS order_product_name,
-              o.purchased_at AS order_purchased_at,
-              o.currency AS order_currency,
               b.remote_id AS bundle_remote_id,
               b.name AS bundle_name,
               b.publisher AS publisher,
@@ -562,8 +537,6 @@ export class LedgerRepository {
       accountId: text(row.account_id) ?? this.accountId,
       orderRemoteId: text(row.order_remote_id) ?? '',
       orderProductName: text(row.order_product_name),
-      orderPurchasedAt: text(row.order_purchased_at),
-      orderCurrency: text(row.order_currency),
       bundleRemoteId: text(row.bundle_remote_id) ?? '',
       bundleName: text(row.bundle_name),
       publisher: text(row.publisher),
@@ -707,7 +680,6 @@ function mapKeyListItem(row: Record<string, SQLOutputValue>): KeyListItem {
     orderId: Number(row.order_id),
     orderRemoteId: text(row.order_remote_id) ?? '',
     orderProductName: text(row.order_product_name),
-    orderPurchasedAt: text(row.order_purchased_at),
     bundleId: Number(row.bundle_id),
     bundleRemoteId: text(row.bundle_remote_id) ?? '',
     bundleName: text(row.bundle_name),
@@ -733,7 +705,6 @@ function mapOrderSummary(row: Record<string, SQLOutputValue>): OrderSummary {
     orderId: Number(row.order_id),
     orderRemoteId: text(row.order_remote_id) ?? '',
     productName: text(row.product_name),
-    purchasedAt: text(row.purchased_at),
     keyCount,
     unrevealedCount: Number(row.unrevealed_count),
     revealedCount: Number(row.revealed_count),

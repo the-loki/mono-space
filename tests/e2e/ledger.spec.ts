@@ -85,7 +85,6 @@ function seedLedger(dbPath: string): SeedResult {
     orders.push({
       remoteId: `order-${orderIndex}`,
       productName: `订单 ${orderIndex}`,
-      purchasedAt: '2026-01-01T00:00:00.000Z',
       bundles: [
         {
           remoteId: `bundle-${orderIndex}`,
@@ -274,9 +273,7 @@ test('订单无 key：明细显示空态而不是列表', async () => {
   const { dir, dbPath } = tempLedger()
   // 只有订单、没有 key：同步只建订单，key 要靠页面上读（ADR-0003）。
   const repo = openLedger({ path: dbPath })
-  repo.applyOrderSync([
-    { remoteId: 'order-empty', productName: '空订单', purchasedAt: null, bundles: [] },
-  ])
+  repo.applyOrderSync([{ remoteId: 'order-empty', productName: '空订单', bundles: [] }])
   repo.close()
 
   const app = await launchApp(dbPath)

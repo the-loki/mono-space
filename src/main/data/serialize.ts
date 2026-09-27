@@ -26,8 +26,6 @@ const LEDGER_OWNER_COLUMNS = [
   'accountId',
   'orderRemoteId',
   'orderProductName',
-  'orderPurchasedAt',
-  'orderCurrency',
   'bundleRemoteId',
   'bundleName',
   'publisher',
@@ -67,8 +65,6 @@ export function rowsToOrders(rows: readonly LedgerExportRow[]): SyncedOrder[] {
       order = {
         remoteId: row.orderRemoteId,
         productName: row.orderProductName,
-        purchasedAt: row.orderPurchasedAt,
-        currency: row.orderCurrency,
         bundles: [],
       }
       orders.set(row.orderRemoteId, order)
@@ -159,8 +155,6 @@ export function parseLedgerCsv(text: string): SyncedOrder[] {
       accountId: record.get('accountId') ?? 'default',
       orderRemoteId: record.get('orderRemoteId') ?? '',
       orderProductName: emptyToNull(record.get('orderProductName')),
-      orderPurchasedAt: emptyToNull(record.get('orderPurchasedAt')),
-      orderCurrency: emptyToNull(record.get('orderCurrency')),
       bundleRemoteId: record.get('bundleRemoteId') ?? '',
       bundleName: emptyToNull(record.get('bundleName')),
       publisher: emptyToNull(record.get('publisher')),
@@ -187,8 +181,6 @@ function normalizeOrder(order: SyncedOrder): SyncedOrder {
   return {
     remoteId: order.remoteId,
     productName: order.productName ?? null,
-    purchasedAt: order.purchasedAt ?? null,
-    currency: order.currency ?? null,
     bundles: Array.isArray(order.bundles)
       ? order.bundles.map((bundle) => ({
           remoteId: bundle.remoteId,

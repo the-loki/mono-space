@@ -9,8 +9,6 @@ function seedOrders(): SyncedOrder[] {
     {
       remoteId: 'order-1',
       productName: '含逗号, 的订单',
-      purchasedAt: '2026-09-01T00:00:00.000Z',
-      currency: 'USD',
       bundles: [
         {
           remoteId: 'bundle-1',
@@ -33,7 +31,6 @@ function seedOrders(): SyncedOrder[] {
     {
       remoteId: 'order-2',
       productName: '第二单',
-      purchasedAt: '2026-08-01T00:00:00.000Z',
       bundles: [
         {
           remoteId: 'bundle-2',
@@ -101,6 +98,19 @@ describe('导出 / 导入往返', () => {
     expect(snapshot(target)).toEqual(snapshot(source))
     source.close()
     target.close()
+  })
+
+  it('CSV 表头不再包含购买时间 / 币种两列（死列已删）', () => {
+    // 这两列同步从不提供、页面读取也不给，实测库里全为 NULL —— 已从导出格式彻底拿掉。
+    expect(CSV_COLUMNS as readonly string[]).not.toContain('orderPurchasedAt')
+    expect(CSV_COLUMNS as readonly string[]).not.toContain('orderCurrency')
+
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync(seedOrders())
+    const header = repo.exportCsv().split('\n')[0]?.split(',') ?? []
+    expect(header).not.toContain('orderPurchasedAt')
+    expect(header).not.toContain('orderCurrency')
+    repo.close()
   })
 
   describe('平台（platform）往返与老文件兼容', () => {

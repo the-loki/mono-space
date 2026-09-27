@@ -32,7 +32,6 @@ function seedOrder(): SyncedOrder {
   return {
     remoteId: 'order-1',
     productName: '示例订单',
-    purchasedAt: '2026-09-01T00:00:00.000Z',
     bundles: [
       {
         remoteId: 'bundle-1',

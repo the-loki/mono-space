@@ -225,8 +225,6 @@ export function buildPageOrder(read: PageOrderRead): SyncedOrder {
   return {
     remoteId: read.orderGamekey.trim(),
     productName: read.productName?.trim() || null,
-    purchasedAt: null,
-    currency: null,
     bundles,
   }
 }

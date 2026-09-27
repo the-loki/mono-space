@@ -6,10 +6,8 @@ describe('订单列表项 → SyncedOrder（ADR-0003：接口只给 gamekey）',
     const order = mapOrderListItem({ gamekey: 'TXzbXSpBc3qfUc3M' })
 
     expect(order.remoteId).toBe('TXzbXSpBc3qfUc3M')
-    // 接口没有商品名 / 购买时间，同步也就不提供它们（页面读过才有）。
+    // 接口没有商品名，同步也就不提供它（页面读过才有）。
     expect(order.productName).toBeUndefined()
-    expect(order.purchasedAt).toBeUndefined()
-    expect(order.currency).toBeUndefined()
     // 接口不再建 key / 资产包（那是页面的职责）。
     expect(order.bundles).toEqual([])
   })

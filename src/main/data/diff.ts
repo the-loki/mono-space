@@ -69,8 +69,6 @@ function normalizeOrder(order: SyncedOrder): Record<string, unknown> {
   return {
     remoteId: order.remoteId,
     productName: order.productName ?? null,
-    purchasedAt: order.purchasedAt ?? null,
-    currency: order.currency ?? null,
     bundles: [...order.bundles]
       .map(normalizeBundle)
       .sort((a, b) => String(a.remoteId).localeCompare(String(b.remoteId))),
@@ -93,12 +91,6 @@ function changedTopLevelFields(previous: SyncedOrder, next: SyncedOrder): string
   const fields: string[] = []
   if ((previous.productName ?? null) !== (next.productName ?? null)) {
     fields.push('productName')
-  }
-  if ((previous.purchasedAt ?? null) !== (next.purchasedAt ?? null)) {
-    fields.push('purchasedAt')
-  }
-  if ((previous.currency ?? null) !== (next.currency ?? null)) {
-    fields.push('currency')
   }
   return fields
 }

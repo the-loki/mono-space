@@ -11,7 +11,7 @@
 import { REDEEM_STATUSES, REVEAL_STATUSES } from './types'
 
 /** 当前 schema 版本号。每次改表结构都追加一条迁移并递增。 */
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 /** 台账业务表清单（不含迁移记账表 schema_version）。 */
 export const LEDGER_TABLES: readonly string[] = [

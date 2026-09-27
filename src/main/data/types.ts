@@ -79,8 +79,6 @@ export interface SyncedBundle {
 export interface SyncedOrder {
   remoteId: string
   productName?: string | null
-  purchasedAt?: string | null
-  currency?: string | null
   bundles: SyncedBundle[]
 }
 
@@ -157,8 +155,6 @@ interface LedgerExportOwnerFields {
   accountId: string
   orderRemoteId: string
   orderProductName: string | null
-  orderPurchasedAt: string | null
-  orderCurrency: string | null
   bundleRemoteId: string
   bundleName: string | null
   publisher: string | null

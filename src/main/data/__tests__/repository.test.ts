@@ -7,7 +7,6 @@ function sampleOrder(): SyncedOrder {
   return {
     remoteId: 'order-1',
     productName: 'Humble 开发资产包',
-    purchasedAt: '2026-09-01T00:00:00.000Z',
     bundles: [
       {
         remoteId: 'bundle-unity',
@@ -172,7 +171,6 @@ describe('订单列表查询（带 key 计数）', () => {
       orderId: expect.any(Number),
       orderRemoteId: 'order-empty',
       productName: null,
-      purchasedAt: null,
       keyCount: 0,
       unrevealedCount: 0,
       revealedCount: 0,
@@ -182,7 +180,6 @@ describe('订单列表查询（带 key 计数）', () => {
     const full = orders.find((order) => order.orderRemoteId === 'order-1')
     expect(full).toMatchObject({
       productName: 'Humble 开发资产包',
-      purchasedAt: '2026-09-01T00:00:00.000Z',
       keyCount: 3,
       unrevealedCount: 3,
       revealedCount: 0,
