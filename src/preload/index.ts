@@ -1,10 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { KeyPage, KeyQuery, OrderSummary } from '../main/data/types'
-import type { AgentLogEntry, AgentRunResult, AgentStatus } from '../main/ipc/agent'
+import type { AgentRunResult, AgentStatus } from '../main/ipc/agent'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
 import type { SyncIpcResult } from '../main/ipc/sync'
 import type { LoginWindowResult, TaskIpcResult } from '../main/ipc/tasks'
-import type { MonoSpaceApi } from '../shared/ipc-contract'
+import type { AgentLogSnapshot, MonoSpaceApi } from '../shared/ipc-contract'
 
 const api: MonoSpaceApi = {
   ping: (message: string): Promise<string> => ipcRenderer.invoke('ping', message),
@@ -33,10 +33,14 @@ const api: MonoSpaceApi = {
     /** 内置任务：揭示单条 key（不可逆）。 */
     revealKey: (keyId: number): Promise<AgentRunResult> =>
       ipcRenderer.invoke('agent:reveal-key', keyId),
-    /** 调试日志快照（最新在前）：仅主进程内存，进程内有效。 */
-    log: (): Promise<AgentLogEntry[]> => ipcRenderer.invoke('agent:log'),
+    /** 调试日志快照（记录最新在前 + 运行状态）：仅主进程内存，进程内有效。 */
+    log: (): Promise<AgentLogSnapshot> => ipcRenderer.invoke('agent:log'),
     /** 清空调试日志。 */
     clearLog: (): Promise<void> => ipcRenderer.invoke('agent:log-clear'),
+  },
+  /** 调试面板独立窗口。 */
+  debug: {
+    open: (): Promise<void> => ipcRenderer.invoke('debug:open'),
   },
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {

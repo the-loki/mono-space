@@ -4,6 +4,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { createMcpHost } from './agent/host'
 import { initBrowser } from './browser'
 import { registerAgentIpc } from './ipc/agent'
+import { registerDebugIpc } from './ipc/debug'
 import { registerLedgerIpc } from './ipc/ledger'
 import { registerSyncIpc } from './ipc/sync'
 import { registerTaskIpc } from './ipc/tasks'
@@ -68,6 +69,9 @@ app.whenReady().then(() => {
     userDataDir: app.getPath('userData'),
     getHost: createMcpHost,
   })
+
+  // 调试面板独立窗口（用户决策）：`debug:open` 幂等开窗 / 聚焦（见 debug-window.ts）。
+  registerDebugIpc()
 
   createWindow()
 

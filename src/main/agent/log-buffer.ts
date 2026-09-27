@@ -111,6 +111,14 @@ export interface AgentLogBuffer {
   toolEnd(input: AgentLogToolEnd): void
   /** 快照：**最新在前**，元素为浅拷贝（外部改不动内部状态）。 */
   snapshot(): AgentLogEntry[]
+  /**
+   * 是否有一次运行正在进行（`runStart` 之后、`runEnd` 之前）。
+   *
+   * 为什么单独一个方法而不是让 `snapshot()` 返回 `{ entries, running }`：
+   * `snapshot()` 的「最新在前的记录数组」语义被既有测试与面板广泛依赖，改形状只会换来无谓的
+   * 断言改动；运行状态与记录本就是两个维度（`clear()` 清记录但不打断运行）。
+   */
+  isRunning(): boolean
   clear(): void
   size(): number
 }
@@ -119,6 +127,8 @@ export interface AgentLogBuffer {
 export function createAgentLogBuffer(capacity: number = AGENT_LOG_CAPACITY): AgentLogBuffer {
   let entries: AgentLogEntry[] = []
   let seq = 0
+  /** 是否正有一次运行（runStart 置真、runEnd 置假；clear 不动它）。 */
+  let running = false
   /** 当前「回合文本」条目：文本增量合并进它，遇到非文本事件就关闭。 */
   let openText: AgentLogEntry | null = null
   /** 正在执行的工具调用：callId → 条目（并行调用也能正确对应）。 */
@@ -138,10 +148,12 @@ export function createAgentLogBuffer(capacity: number = AGENT_LOG_CAPACITY): Age
   return {
     runStart(prompt) {
       closeText()
+      running = true
       push({ kind: 'run_start', detail: truncate(prompt, AGENT_LOG_SUMMARY_LIMIT), failed: false })
     },
     runEnd(input) {
       closeText()
+      running = false
       push({
         kind: 'run_end',
         detail: truncate(input.detail, AGENT_LOG_SUMMARY_LIMIT),
@@ -190,6 +202,9 @@ export function createAgentLogBuffer(capacity: number = AGENT_LOG_CAPACITY): Age
     snapshot() {
       // 内部按时间升序，反转成最新在前，方便面板从上往下读。
       return entries.map((entry) => ({ ...entry })).reverse()
+    },
+    isRunning() {
+      return running
     },
     clear() {
       entries = []

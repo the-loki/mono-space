@@ -5,10 +5,10 @@
  * 只把动作回调交给这里 —— 提示词与输出 schema 内置在主进程，渲染层只传标识
  * （订单 gamekey / keyId，见 `src/main/agent/prompts.ts`）。
  *
- * 内置 agent 的调试日志面板挂在这里，两个视图下都可见（agent 动作在两边都会触发）。
+ * 内置 agent 的调试日志面板**不在这里**了（用户决策：面板独立成自己的窗口，见
+ * `src/main/debug-window.ts`）。本页只在工具条上给一个入口按钮，通过 `debug:open` 开窗。
  */
 import { type JSX, useCallback, useState } from 'react'
-import { AgentLogPanel } from './AgentLogPanel'
 import { OrderKeysPage } from './OrderKeysPage'
 import { OrdersPage } from './OrdersPage'
 import type { LedgerExportFormat, OrderSummary } from './types'
@@ -22,8 +22,16 @@ export function LedgerPage(): JSX.Element {
   const [exportNote, setExportNote] = useState('')
   const [actionNote, setActionNote] = useState('')
   const [syncing, setSyncing] = useState(false)
-  const [agentRunning, setAgentRunning] = useState(false)
   const [readBusyGamekey, setReadBusyGamekey] = useState<string | null>(null)
+
+  // 调试日志改成独立窗口：主进程单实例开窗，重复点只会聚焦（见 debug-window.ts）。
+  const handleOpenDebug = useCallback(async () => {
+    try {
+      await window.api.debug.open()
+    } catch (cause: unknown) {
+      setActionNote(cause instanceof Error ? cause.message : String(cause))
+    }
+  }, [])
 
   const handleExport = useCallback(
     async (format: LedgerExportFormat) => {
@@ -63,7 +71,6 @@ export function LedgerPage(): JSX.Element {
   const handleReadOrderKeys = useCallback(
     async (order: OrderSummary) => {
       setReadBusyGamekey(order.orderRemoteId)
-      setAgentRunning(true)
       setActionNote(`读取中…（订单 ${order.orderRemoteId}；若弹出窗口请完成登录）`)
       try {
         const result = await window.api.agent.readOrderKeys(order.orderRemoteId)
@@ -78,7 +85,6 @@ export function LedgerPage(): JSX.Element {
       } catch (cause: unknown) {
         setActionNote(cause instanceof Error ? cause.message : String(cause))
       } finally {
-        setAgentRunning(false)
         setReadBusyGamekey(null)
         // key 计数 / 商品名可能刚被页面读取补齐。
         reloadOrders()
@@ -89,7 +95,6 @@ export function LedgerPage(): JSX.Element {
 
   // 内置任务：揭示单条 key（不可逆）。提示词在主进程。
   const handleReveal = useCallback(async (keyId: number) => {
-    setAgentRunning(true)
     setActionNote('揭示中…（若弹出窗口请完成登录）')
     try {
       const result = await window.api.agent.revealKey(keyId)
@@ -103,8 +108,6 @@ export function LedgerPage(): JSX.Element {
       )
     } catch (cause: unknown) {
       setActionNote(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setAgentRunning(false)
     }
   }, [])
 
@@ -174,6 +177,15 @@ export function LedgerPage(): JSX.Element {
           >
             导出 CSV
           </button>
+          {/* 调试日志在独立窗口里（用户决策），本页只给入口；重复点只是聚焦。 */}
+          <button
+            type="button"
+            data-testid="ledger-debug-open"
+            onClick={() => void handleOpenDebug()}
+            className="rounded bg-slate-800 px-2 py-1 text-slate-300 text-sm hover:bg-slate-700"
+          >
+            调试日志…
+          </button>
           <span data-testid="ledger-export-note" className="text-slate-500 text-xs">
             {exportNote}
           </span>
@@ -185,9 +197,6 @@ export function LedgerPage(): JSX.Element {
           {actionNote}
         </p>
       )}
-
-      {/* 调试日志：默认折叠，运行中自动低频补拉；两个视图共用同一份。 */}
-      <AgentLogPanel running={agentRunning} />
 
       {selectedOrder ? (
         <OrderKeysPage

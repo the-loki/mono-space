@@ -33,5 +33,14 @@ export default defineConfig({
       alias: { '@renderer': resolve('src/renderer/src') },
     },
     plugins: [react(), tailwindcss()],
+    // 显式多入口：index 是主界面，debug 是独立的调试日志窗口（见 src/main/debug-window.ts）。
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/renderer/index.html'),
+          debug: resolve('src/renderer/debug.html'),
+        },
+      },
+    },
   },
 })

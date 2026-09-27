@@ -37,5 +37,11 @@ export type Platform = LedgerListItem['platform']
 /** 导出格式。 */
 export type LedgerExportFormat = Parameters<LedgerApi['export']>[0]
 
-/** 内置 agent 调试日志的一条记录（形状从 preload 声明派生，避免两处维护）。 */
-export type AgentLogEntry = Awaited<ReturnType<Window['api']['agent']['log']>>[number]
+/**
+ * 调试日志快照（记录最新在前 + 是否正在运行）：形状从 preload 声明派生，避免两处维护。
+ * 运行状态由主进程缓冲给出，面板据此自己决定要不要低频轮询（它已不接外部 props）。
+ */
+export type AgentLogSnapshot = Awaited<ReturnType<Window['api']['agent']['log']>>
+
+/** 内置 agent 调试日志的一条记录。 */
+export type AgentLogEntry = AgentLogSnapshot['entries'][number]

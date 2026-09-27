@@ -187,3 +187,48 @@ describe('createAgentLogBuffer：事件合并与环形裁剪', () => {
     expect(buffer.snapshot()).toEqual([])
   })
 })
+
+describe('createAgentLogBuffer：运行状态（面板据此自给自足轮询）', () => {
+  it('初始为未运行', () => {
+    expect(createAgentLogBuffer().isRunning()).toBe(false)
+  })
+
+  it('runStart 后为运行中，runEnd 后回到未运行', () => {
+    const buffer = createAgentLogBuffer()
+    buffer.runStart('p')
+    expect(buffer.isRunning()).toBe(true)
+    buffer.runEnd({ ok: true, detail: '完成' })
+    expect(buffer.isRunning()).toBe(false)
+  })
+
+  it('失败结束同样算结束', () => {
+    const buffer = createAgentLogBuffer()
+    buffer.runStart('p')
+    buffer.runEnd({ ok: false, detail: '模型报错' })
+    expect(buffer.isRunning()).toBe(false)
+  })
+
+  it('没开始就 runEnd：状态保持未运行（幂等）', () => {
+    const buffer = createAgentLogBuffer()
+    buffer.runEnd({ ok: true, detail: '幽灵结束' })
+    expect(buffer.isRunning()).toBe(false)
+    // 记录照旧落盘（end 本身是有效事件）。
+    expect(buffer.snapshot()).toHaveLength(1)
+  })
+
+  it('clear 只清记录，不改运行状态（运行中清空仍是运行中）', () => {
+    const buffer = createAgentLogBuffer()
+    buffer.runStart('p')
+    buffer.clear()
+    expect(buffer.snapshot()).toEqual([])
+    expect(buffer.isRunning()).toBe(true)
+  })
+
+  it('运行中 snapshot 仍是「最新在前的记录数组」（entries 语义不变）', () => {
+    const buffer = createAgentLogBuffer()
+    buffer.runStart('p')
+    const snapshot = buffer.snapshot()
+    expect(Array.isArray(snapshot)).toBe(true)
+    expect(snapshot.map((entry) => entry.kind)).toEqual(['run_start'])
+  })
+})

@@ -177,6 +177,20 @@ export interface AgentLogEntry {
   failed: boolean
 }
 
+/**
+ * 调试日志快照：记录 + 当前是否正在运行。
+ *
+ * 为什么要带 `running`：面板在**独立调试窗口**里没有外部传入的运行状态，只能自己判断该不该
+ * 低频轮询；运行状态本来就由主进程缓冲持有（`runStart` / `runEnd`），从 IPC 一起给出去才不会
+ * 让渲染层去猜。
+ */
+export interface AgentLogSnapshot {
+  /** 最新在前的记录（形状与既有语义一致，仍是数组）。 */
+  entries: AgentLogEntry[]
+  /** 是否有一次运行正在进行。 */
+  running: boolean
+}
+
 // ————————————————————————————— 动作 —————————————————————————————
 
 /** 打开过的登录窗口（id + 落地 URL + HTTP 状态）。 */
@@ -229,10 +243,15 @@ export interface MonoSpaceApi {
     readOrderKeys(gamekey: string): Promise<AgentRunResult>
     /** 内置任务：揭示单条 key（不可逆）。 */
     revealKey(keyId: number): Promise<AgentRunResult>
-    /** 调试日志快照（最新在前）：仅主进程内存，进程内有效。 */
-    log(): Promise<AgentLogEntry[]>
+    /** 调试日志快照（记录最新在前 + 运行状态）：仅主进程内存，进程内有效。 */
+    log(): Promise<AgentLogSnapshot>
     /** 清空调试日志。 */
     clearLog(): Promise<void>
+  }
+  /** 调试面板独立窗口（用户决策：面板独立于台账页）。 */
+  debug: {
+    /** 打开（或聚焦已有的）调试窗口；幂等。 */
+    open(): Promise<void>
   }
   /** 单条动作：揭示 / 兑换（会打开可见窗口供人接管）。 */
   tasks: {

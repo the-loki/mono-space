@@ -111,7 +111,11 @@ export function registerAgentIpc(options: { userDataDir: string; getHost: () => 
     }),
   )
   ipcMain.handle(AGENT_STATUS_CHANNEL, () => agentStatus(options.userDataDir))
-  // 最新在前的快照；空数组表示还没跑过（或刚被清空）。
-  ipcMain.handle(AGENT_LOG_CHANNEL, () => agentLog.snapshot())
+  // 调试日志快照：记录（最新在前，空数组表示没跑过或刚被清空）+ 是否正在运行。
+  // 运行状态一起给出去，面板才能自给自足地在独立窗口里决定要不要低频轮询。
+  ipcMain.handle(AGENT_LOG_CHANNEL, () => ({
+    entries: agentLog.snapshot(),
+    running: agentLog.isRunning(),
+  }))
   ipcMain.handle(AGENT_LOG_CLEAR_CHANNEL, () => agentLog.clear())
 }
