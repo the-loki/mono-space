@@ -146,59 +146,70 @@ export function LedgerPage(): JSX.Element {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="font-semibold text-lg">订单</h1>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="ledger-login"
-            onClick={() => void handleLogin()}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-300 text-sm hover:bg-slate-700"
-          >
-            登录
-          </button>
-          <button
-            type="button"
-            data-testid="ledger-sync"
-            disabled={syncing}
-            onClick={() => void handleSync()}
-            className="rounded bg-emerald-800 px-2 py-1 text-emerald-50 text-sm hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {syncing ? '同步中…' : '同步'}
-          </button>
-          <button
-            type="button"
-            data-testid="ledger-export-json"
-            onClick={() => void handleExport('json')}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-300 text-sm hover:bg-slate-700"
-          >
-            导出 JSON
-          </button>
-          <button
-            type="button"
-            data-testid="ledger-export-csv"
-            onClick={() => void handleExport('csv')}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-300 text-sm hover:bg-slate-700"
-          >
-            导出 CSV
-          </button>
+      {/* 工具条按用途分三组：登录/同步（数据）· 导出（产出）· 调试（本机排查），
+          组间用 1px 竖线分隔；主次靠按钮档位区分，同步是唯一的主操作。 */}
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="font-semibold text-ink text-lg tracking-tight">订单</h1>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              data-testid="ledger-login"
+              onClick={() => void handleLogin()}
+              className="btn btn-sm btn-secondary"
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              data-testid="ledger-sync"
+              disabled={syncing}
+              onClick={() => void handleSync()}
+              className="btn btn-sm btn-primary"
+            >
+              {syncing ? '同步中…' : '同步'}
+            </button>
+          </div>
+          <span className="h-5 w-px bg-line-strong" aria-hidden="true" />
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              data-testid="ledger-export-json"
+              onClick={() => void handleExport('json')}
+              className="btn btn-sm btn-ghost"
+            >
+              导出 JSON
+            </button>
+            <button
+              type="button"
+              data-testid="ledger-export-csv"
+              onClick={() => void handleExport('csv')}
+              className="btn btn-sm btn-ghost"
+            >
+              导出 CSV
+            </button>
+          </div>
+          <span className="h-5 w-px bg-line-strong" aria-hidden="true" />
           {/* 调试日志在独立窗口里（用户决策），本页只给入口；重复点只是聚焦。 */}
           <button
             type="button"
             data-testid="ledger-debug-open"
             onClick={() => void handleOpenDebug()}
-            className="rounded bg-slate-800 px-2 py-1 text-slate-300 text-sm hover:bg-slate-700"
+            className="btn btn-sm btn-ghost"
           >
             调试日志…
           </button>
-          <span data-testid="ledger-export-note" className="text-slate-500 text-xs">
+          <span data-testid="ledger-export-note" className="text-ink-3 text-xs tabular-nums">
             {exportNote}
           </span>
         </div>
       </header>
 
       {actionNote && (
-        <p data-testid="ledger-action-note" className="px-3 text-slate-400 text-xs">
+        <p
+          data-testid="ledger-action-note"
+          className="rounded-md border border-line bg-surface px-3 py-1.5 text-ink-2 text-xs leading-relaxed"
+        >
           {actionNote}
         </p>
       )}

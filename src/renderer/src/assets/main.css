@@ -1,1 +1,150 @@
 @import "tailwindcss";
+
+/*
+ * 设计 token（Tailwind v4 @theme → 自动生成 bg-* / text-* / border-* 工具类）。
+ *
+ * 方向：本机深色数据工具（68 单 / 1000+ key 为主场景，长时间挂着看）。
+ * 配色取自 ui-ux-pro-max 的「深色高对比」配对（bg #020617 / fg #F8FAFC /
+ * border #334155 / ring 亮色），层级按 slate 梯度收窄，避免 30 种近似灰。
+ *
+ * 对比度实测（相对 canvas #020617，正文要求 ≥4.5:1）：
+ *   ink 18.4 · ink-2 13.6 · ink-3 7.87 · accent-soft 12.1
+ * 旧的 slate-500 只有 4.24:1（未达标），已从正文/元信息角色里移除。
+ *
+ * 字体只用系统栈：index.html 的 CSP 是 `default-src 'self'`，外部字体（Google Fonts）
+ * 会被拦，且本任务不允许加依赖，所以 ui-ux-pro-max 推荐的 Fira Code/Fira Sans 不适用。
+ */
+@theme {
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  --font-mono:
+    ui-monospace, "SFMono-Regular", "JetBrains Mono", "Cascadia Mono", Consolas, "Liberation Mono",
+    monospace;
+
+  /* 表面层级：canvas（窗口底）< surface（列表/面板）< surface-2（表头/工具条） */
+  --color-canvas: #020617;
+  --color-surface: #0b1220;
+  --color-surface-2: #131c2e;
+  --color-surface-hover: #1c2740;
+
+  /* 描边：line 做行分隔（刻意轻），line-strong 做容器轮廓与表头下沿 */
+  --color-line: #1e293b;
+  --color-line-strong: #334155;
+
+  /* 文本层级 */
+  --color-ink: #f1f5f9;
+  --color-ink-2: #cbd5e1;
+  --color-ink-3: #94a3b8;
+
+  /* 强调色：亮底 + 深字（深色主题下比「深底白字」更容易过 4.5:1） */
+  --color-accent: #38bdf8;
+  --color-accent-hover: #7dd3fc;
+  --color-accent-strong: #0ea5e9;
+  --color-accent-ink: #020617;
+
+  /* 焦点环：对所有表面都 ≥8:1（非文本要求 ≥3:1） */
+  --color-focus: #7dd3fc;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  /* 关键：全局统一的可见焦点环，任何控件都不会「去掉 outline 就没了」。
+     刻意往外画（offset 2px）：这样不管控件本身是亮底还是暗底，环都落在深色 canvas 上
+     （12:1），不会像 inset 那样在亮色主按钮上糊成一片。 */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* 按钮：主 / 次 / 幽灵 / 安静强调 四档，四态（悬停 / 激活 / 焦点 / 禁用）统一在此。 */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-sm {
+    @apply h-8 px-3 text-sm;
+  }
+
+  .btn-xs {
+    @apply h-6 px-2 text-xs;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-accent-ink hover:bg-accent-hover active:bg-accent-strong;
+  }
+
+  .btn-secondary {
+    @apply border border-line-strong bg-surface-2 text-ink-2 hover:border-slate-600 hover:bg-surface-hover hover:text-ink;
+  }
+
+  .btn-ghost {
+    @apply border border-transparent text-ink-3 hover:bg-surface-hover hover:text-ink;
+  }
+
+  /* 行内动作：默认低调（68 行不抢戏），悬停/聚焦才亮起来。 */
+  .btn-accent-quiet {
+    @apply border border-sky-800 text-sky-300 hover:border-sky-500 hover:bg-sky-950 hover:text-sky-200;
+  }
+
+  /* 状态胶囊：文字 + 语义色（颜色只是辅助，含义始终由中文标签承载）。 */
+  .badge {
+    @apply inline-flex items-center whitespace-nowrap rounded border px-1.5 text-[11px] font-medium leading-4;
+  }
+
+  .badge-done {
+    @apply border-emerald-800 bg-emerald-950 text-emerald-300;
+  }
+
+  .badge-pending {
+    @apply border-amber-800 bg-amber-950 text-amber-200;
+  }
+
+  .badge-todo {
+    @apply border-sky-800 bg-sky-950 text-sky-200;
+  }
+
+  .badge-progress {
+    @apply border-violet-800 bg-violet-950 text-violet-200;
+  }
+
+  .badge-muted {
+    @apply border-slate-700 bg-slate-800 text-slate-300;
+  }
+
+  .badge-warn {
+    @apply border-orange-800 bg-orange-950 text-orange-200;
+  }
+
+  .badge-danger {
+    @apply border-red-800 bg-red-950 text-red-300;
+  }
+
+  /* 表头：与主视图 / 明细视图共用，保证两处列样式一致。 */
+  .table-head {
+    @apply text-xs font-medium tracking-wide text-ink-3;
+  }
+}
+
+/* 尊重系统「减少动态效果」。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

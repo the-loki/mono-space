@@ -14,7 +14,7 @@ if (!container) throw new Error('#root not found')
 
 createRoot(container).render(
   <StrictMode>
-    <div className="flex h-screen flex-col bg-slate-950 p-3 text-slate-100">
+    <div className="flex h-screen flex-col bg-canvas p-3 text-ink text-sm">
       <AgentLogPanel />
     </div>
   </StrictMode>,

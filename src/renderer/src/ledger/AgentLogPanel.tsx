@@ -11,6 +11,7 @@
  * 数据只在主进程内存，本面板不参与持久化与审计链路（见 `src/main/ipc/agent.ts` 的说明）。
  */
 import { type JSX, useCallback, useEffect, useState } from 'react'
+import { IconChevron, IconLedger } from '../ui/icons'
 import type { AgentLogEntry, AgentLogSnapshot } from './types'
 
 /** 刷新间隔：够看到运行过程，又不会高频空转。 */
@@ -67,33 +68,52 @@ export function AgentLogPanel(): JSX.Element {
   return (
     <div
       data-testid="ledger-agent-log"
-      className="flex min-h-0 flex-1 flex-col rounded border border-slate-800 bg-slate-900/40"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line
+        bg-surface"
     >
-      <div className="flex items-center gap-2 px-3 py-1.5">
+      {/* 日志控制条：折叠开关在最左，运行状态紧随，刷新/清空靠右。 */}
+      <div className="flex shrink-0 items-center gap-2 border-line border-b bg-surface-2 px-2 py-1.5">
         <button
           type="button"
           data-testid="ledger-agent-log-toggle"
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
-          className="text-slate-300 text-sm hover:text-slate-100"
+          className="flex items-center gap-1.5 rounded px-1.5 py-1 text-ink-2 text-sm
+            hover:bg-surface-hover hover:text-ink"
         >
-          {expanded ? '▾' : '▸'} agent 调试日志
-          <span data-testid="ledger-agent-log-count" className="ml-1 text-slate-500">
+          <IconChevron
+            size={12}
+            className={`text-ink-3 transition-transform ${expanded ? '' : '-rotate-90'}`}
+          />
+          agent 调试日志
+          <span
+            data-testid="ledger-agent-log-count"
+            className="rounded bg-slate-800 px-1.5 text-[11px] text-ink-3 tabular-nums"
+          >
             {entries.length}
           </span>
         </button>
+
         {running && (
-          <span data-testid="ledger-agent-log-running" className="text-emerald-400 text-xs">
+          <span
+            data-testid="ledger-agent-log-running"
+            className="flex items-center gap-1.5 text-emerald-300 text-xs"
+          >
+            <span
+              className="size-1.5 animate-pulse rounded-full bg-emerald-400"
+              aria-hidden="true"
+            />
             运行中…
           </span>
         )}
+
         {expanded && (
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5">
             <button
               type="button"
               data-testid="ledger-agent-log-refresh"
               onClick={() => void refresh()}
-              className="rounded bg-slate-800 px-2 py-0.5 text-slate-300 text-xs hover:bg-slate-700"
+              className="btn btn-xs btn-ghost"
             >
               刷新
             </button>
@@ -101,7 +121,7 @@ export function AgentLogPanel(): JSX.Element {
               type="button"
               data-testid="ledger-agent-log-clear"
               onClick={() => void handleClear()}
-              className="rounded bg-slate-800 px-2 py-0.5 text-slate-300 text-xs hover:bg-slate-700"
+              className="btn btn-xs btn-ghost"
             >
               清空
             </button>
@@ -112,38 +132,51 @@ export function AgentLogPanel(): JSX.Element {
       {expanded && (
         <div
           data-testid="ledger-agent-log-list"
-          className="min-h-0 flex-1 overflow-y-auto border-slate-800 border-t px-3 py-2"
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
         >
           {error && (
-            <p data-testid="ledger-agent-log-error" className="text-red-400 text-xs">
+            <p data-testid="ledger-agent-log-error" className="text-red-300 text-xs">
               日志读取失败：{error}
             </p>
           )}
 
           {!error && entries.length === 0 && (
-            <p data-testid="ledger-agent-log-empty" className="text-slate-500 text-xs">
-              暂无记录。
-            </p>
+            <div
+              data-testid="ledger-agent-log-empty"
+              className="flex h-full flex-col items-center justify-center gap-2 text-center"
+            >
+              <span
+                className="flex size-9 items-center justify-center rounded-full border
+                  border-line-strong bg-surface-2 text-ink-3"
+              >
+                <IconLedger size={16} />
+              </span>
+              <p className="text-ink-3 text-sm">暂无记录。</p>
+              <p className="text-ink-3 text-xs leading-relaxed">
+                agent 运行时，工具调用与输出会实时出现在这里。
+              </p>
+            </div>
           )}
 
-          <ul className="flex flex-col gap-1">
+          {/* 等宽 + 左侧时间线色条：日志要「扫」，不要「读」。 */}
+          <ul className="flex flex-col font-mono text-xs leading-relaxed">
             {entries.map((entry) => (
               <li
                 key={entry.seq}
                 data-testid="ledger-agent-log-item"
                 data-kind={entry.kind}
                 data-failed={entry.failed}
-                className={entry.failed ? 'text-red-300 text-xs' : 'text-slate-300 text-xs'}
+                className={`border-line border-l-2 py-1 pl-2.5 ${
+                  entry.failed ? 'border-l-red-800 text-red-300' : 'text-ink-2'
+                }`}
               >
-                <span className="text-slate-500">{shortTime(entry.at)}</span>{' '}
-                <span className="text-slate-400">{KIND_LABELS[entry.kind]}</span>
+                <span className="text-ink-3">{shortTime(entry.at)}</span>{' '}
+                <span className="text-ink-3">{KIND_LABELS[entry.kind]}</span>
                 {entry.tool && <span className="ml-1 text-indigo-300">{entry.tool}</span>}
                 {entry.failed && <span className="ml-1 text-red-400">失败</span>}
-                {entry.detail && (
-                  <div className="break-all font-mono text-slate-400">{entry.detail}</div>
-                )}
+                {entry.detail && <div className="break-all text-ink-3">{entry.detail}</div>}
                 {entry.result !== undefined && (
-                  <div className="break-all font-mono text-slate-500">→ {entry.result}</div>
+                  <div className="break-all text-ink-3">→ {entry.result}</div>
                 )}
               </li>
             ))}

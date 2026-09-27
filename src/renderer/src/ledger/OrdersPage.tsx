@@ -6,6 +6,7 @@
  * 同步只提供 gamekey，所以读过页面之前商品名显示「未读取」、购买时间不显示。
  */
 import type { JSX } from 'react'
+import { IconAlert, IconInbox } from '../ui/icons'
 import type { OrderSummary } from './types'
 import type { OrdersData } from './useOrdersData'
 
@@ -20,7 +21,15 @@ interface OrdersPageProps {
 }
 
 /** 行网格：与表头共用，保证列对齐。 */
-const GRID = 'grid grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_9rem_11rem_11rem] items-center gap-3'
+const GRID =
+  'grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.5fr)_8.5rem_10rem_12rem] items-center gap-3'
+
+/** 空态 / 错误态里的圆形图标底。 */
+const STATE_ICON =
+  'flex size-9 items-center justify-center rounded-full border border-line-strong bg-surface-2 text-ink-3'
+
+/** 居中的状态块（空 / 载入 / 错误共用一套排版）。 */
+const STATE_BLOCK = 'flex h-full flex-col items-center justify-center gap-2 px-6 text-center'
 
 /** ISO 时间只显示日期部分（无时区换算，稳定）。 */
 function shortDate(at: string | null): string {
@@ -36,83 +45,110 @@ export function OrdersPage({
 }: OrdersPageProps): JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className={`${GRID} border-slate-700 border-b px-3 pb-1 text-slate-500 text-xs`}>
-        <span>商品</span>
-        <span>订单</span>
-        <span>购买时间</span>
-        <span>key</span>
-        <span>动作</span>
-      </div>
-
-      <p data-testid="orders-total" className="px-3 text-slate-400 text-sm">
+      <p data-testid="orders-total" className="px-1 text-ink-2 text-sm tabular-nums">
         共 {data.orders.length} 单
       </p>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded border border-slate-800 bg-slate-900/40">
-        {data.status === 'error' && (
-          <p data-testid="orders-error" className="p-4 text-red-400 text-sm">
-            订单读取失败：{data.error}
-          </p>
-        )}
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line
+          bg-surface"
+      >
+        <div
+          className={`${GRID} table-head shrink-0 border-line-strong border-b bg-surface-2 px-3 py-1.5`}
+        >
+          <span>商品</span>
+          <span>订单</span>
+          <span>购买时间</span>
+          <span>key</span>
+          <span>动作</span>
+        </div>
 
-        {data.status === 'loading' && (
-          <p data-testid="orders-loading" className="p-4 text-slate-400 text-sm">
-            正在读取订单…
-          </p>
-        )}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {data.status === 'error' && (
+            <div data-testid="orders-error" className={STATE_BLOCK}>
+              <span className={STATE_ICON}>
+                <IconAlert size={16} />
+              </span>
+              <p className="font-medium text-ink text-sm">订单读取失败</p>
+              <p className="max-w-md text-ink-3 text-xs leading-relaxed">{data.error}</p>
+            </div>
+          )}
 
-        {data.status === 'ready' && data.orders.length === 0 && (
-          <p data-testid="orders-empty" className="p-4 text-slate-400 text-sm">
-            还没有订单。先点「同步」从 Humble 拉订单列表，再逐单「读取并揭示本单 key」。
-          </p>
-        )}
+          {data.status === 'loading' && (
+            <p
+              data-testid="orders-loading"
+              className="flex h-full items-center justify-center gap-2 px-6 text-ink-3 text-sm"
+            >
+              <span className="size-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true" />
+              正在读取订单…
+            </p>
+          )}
 
-        {data.orders.map((order) => (
-          <div
-            key={order.orderRemoteId}
-            data-testid="order-row"
-            data-order-key={order.orderRemoteId}
-            data-has-page-keys={order.hasPageKeys}
-            onClick={() => onOpenOrder(order)}
-            className={`${GRID} cursor-pointer border-slate-800 border-b px-3 py-2 text-sm hover:bg-slate-800/40`}
-          >
-            <span className="truncate" title={order.productName ?? order.orderRemoteId}>
-              {order.productName ?? '未读取'}
-            </span>
-            <span className="truncate font-mono text-slate-400 text-xs" title={order.orderRemoteId}>
-              {order.orderRemoteId}
-            </span>
-            <span className="text-slate-400 text-xs">{shortDate(order.purchasedAt)}</span>
-            <span className="text-slate-300 text-xs" data-testid="order-key-count">
-              {order.keyCount} 个 key·{order.unrevealedCount} 个未揭示
-            </span>
-            <span className="flex gap-2">
-              <button
-                type="button"
-                data-testid="order-read-keys"
-                disabled={readBusyGamekey === order.orderRemoteId}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onReadOrderKeys(order)
-                }}
-                className="rounded bg-indigo-800 px-2 py-1 text-indigo-50 text-xs hover:bg-indigo-700 disabled:opacity-50"
+          {data.status === 'ready' && data.orders.length === 0 && (
+            <div data-testid="orders-empty" className={STATE_BLOCK}>
+              <span className={STATE_ICON}>
+                <IconInbox size={16} />
+              </span>
+              <p className="font-medium text-ink text-sm">还没有订单</p>
+              <p className="max-w-md text-ink-3 text-xs leading-relaxed">
+                先点「同步」从 Humble 拉订单列表，再逐单「读取并揭示本单 key」。
+              </p>
+            </div>
+          )}
+
+          {data.orders.map((order) => (
+            <div
+              key={order.orderRemoteId}
+              data-testid="order-row"
+              data-order-key={order.orderRemoteId}
+              data-has-page-keys={order.hasPageKeys}
+              onClick={() => onOpenOrder(order)}
+              className={`${GRID} cursor-pointer border-line border-b px-3 py-1.5 text-sm
+                transition-colors last:border-b-0 hover:bg-surface-hover`}
+            >
+              <span
+                className="truncate font-medium text-ink"
+                title={order.productName ?? order.orderRemoteId}
               >
-                {readBusyGamekey === order.orderRemoteId ? '读取中…' : '读取并揭示本单 key'}
-              </button>
-              <button
-                type="button"
-                data-testid="order-open-detail"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onOpenOrder(order)
-                }}
-                className="rounded bg-slate-800 px-2 py-1 text-slate-300 text-xs hover:bg-slate-700"
-              >
-                明细
-              </button>
-            </span>
-          </div>
-        ))}
+                {order.productName ?? '未读取'}
+              </span>
+              <span className="truncate font-mono text-ink-3 text-xs" title={order.orderRemoteId}>
+                {order.orderRemoteId}
+              </span>
+              <span className="tabular-nums text-ink-3 text-xs">
+                {shortDate(order.purchasedAt) || '—'}
+              </span>
+              <span className="tabular-nums text-ink-2 text-xs" data-testid="order-key-count">
+                {order.keyCount} 个 key·{order.unrevealedCount} 个未揭示
+              </span>
+              <span className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  data-testid="order-read-keys"
+                  disabled={readBusyGamekey === order.orderRemoteId}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onReadOrderKeys(order)
+                  }}
+                  className="btn btn-xs btn-accent-quiet"
+                >
+                  {readBusyGamekey === order.orderRemoteId ? '读取中…' : '读取并揭示本单 key'}
+                </button>
+                <button
+                  type="button"
+                  data-testid="order-open-detail"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onOpenOrder(order)
+                  }}
+                  className="btn btn-xs btn-ghost"
+                >
+                  明细
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
