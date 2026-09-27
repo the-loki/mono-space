@@ -6,7 +6,8 @@
  *
  * **自给自足**：运行状态从 `agent:log` 的返回值里读（主进程缓冲的 `isRunning`），所以本组件
  * 不接任何外部 props —— 独立窗口里没有台账页的 `agentRunning` 可传，让面板自己判断才真的独立。
- * 轮询语义：拉一次；运行中每 2.5s 补拉一次；由运行中变不运行时补拉一次最终状态。
+ * 轮询语义：**永远轮询**（运行中 2.5s / 空闲 5s，见 `log-poll.ts`）—— 空闲停轮询曾导致
+ * 「开着面板时启动的新任务不出现」，那是真 bug。
  * 数据只在主进程内存，本面板不参与持久化与审计链路（见 `src/main/ipc/agent.ts` 的说明）。
  *
  * 版式（它既然是窗口里唯一的内容）：**窗口级工具条 + 列表**，不再自带卡片圆角与折叠开关 ——
@@ -15,10 +16,8 @@
 import { type JSX, useCallback, useEffect, useState } from 'react'
 import { IconTerminal } from '../ui/icons'
 import { AgentLogRow } from './AgentLogRow'
+import { logPollIntervalMs } from './log-poll'
 import type { AgentLogSnapshot } from './types'
-
-/** 刷新间隔：够看到运行过程，又不会高频空转。 */
-const POLL_INTERVAL_MS = 2500
 
 /** 本地时刻（时:分:秒），用来告诉用户「这份快照是什么时候拉的」。 */
 function nowTime(): string {
@@ -43,11 +42,13 @@ export function AgentLogPanel(): JSX.Element {
     }
   }, [])
 
-  // 拉一次；运行中每 2.5s 补拉；running 由 true 变 false 时本 effect 重跑 → 补拉最终状态。
+  // 拉一次；**然后一直轮询**（空闲也在轮询，只是慢一倍）。
+  //
+  // 曾经的写法是「不 running 就 return，不设 interval」——那会让「面板开着时启动的新任务」
+  // 永远不出现（实测：缓冲 19 条、面板停在 0 条），所以这里刻意**没有**任何提前 return。
   useEffect(() => {
     void refresh()
-    if (!running) return
-    const timer = setInterval(() => void refresh(), POLL_INTERVAL_MS)
+    const timer = setInterval(() => void refresh(), logPollIntervalMs(running))
     return () => clearInterval(timer)
   }, [running, refresh])
 
