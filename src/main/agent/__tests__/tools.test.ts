@@ -471,4 +471,70 @@ describe('keys_ingest 的 schema：平台由 agent 逐行判断，取值只做�
     // 旧说法（平台由应用解析）必须消失。
     expect(description).not.toContain('平台由应用解析')
   })
+
+  it('每条 key 含 noCodeReason，且**不是必填**（有码的行不用给）', () => {
+    const keys = keysSchema()
+    expect(Object.keys(keys.properties ?? {})).toContain('noCodeReason')
+    expect(keys.required ?? []).not.toContain('noCodeReason')
+    // 自由字符串，不做非空 / 枚举约束（枚举会让「判不出」的写法在 schema 层失败、拖垮整单）。
+    expect(keys.properties?.noCodeReason?.minLength).toBeUndefined()
+    expect(keys.properties?.noCodeReason).not.toHaveProperty('anyOf')
+  })
+
+  it('noCodeReason 的描述写清取值范围与「有码不用给 / 判不出写 unknown / 不要编」', () => {
+    const description = keysSchema().properties?.noCodeReason?.description ?? ''
+    for (const name of ['expired', 'exhausted', 'link_only', 'unknown']) {
+      expect(description).toContain(name)
+    }
+    expect(description).toContain('有码')
+    expect(description).toContain('不要编')
+  })
+})
+
+describe('keys_upsert 的无码缘由（可选 + 收敛后转发）', () => {
+  function entriesSchema() {
+    const spec = createTools(fakeHost()).find((tool) => tool.name === `${TOOL_PREFIX}keys_upsert`)
+    const parameters = spec?.parameters as unknown as {
+      properties: {
+        entries: {
+          items: {
+            required?: string[]
+            properties?: Record<string, { description?: string; minLength?: number }>
+          }
+        }
+      }
+    }
+    return parameters.properties.entries.items
+  }
+
+  it('entries 每条含 noCodeReason，且不是必填', () => {
+    const entry = entriesSchema()
+    expect(Object.keys(entry.properties ?? {})).toContain('noCodeReason')
+    expect(entry.required ?? []).not.toContain('noCodeReason')
+  })
+
+  it('noCodeReason 的描述写清取值范围与「有码不用给」', () => {
+    const description = entriesSchema().properties?.noCodeReason?.description ?? ''
+    for (const name of ['expired', 'exhausted', 'link_only', 'unknown']) {
+      expect(description).toContain(name)
+    }
+    expect(description).toContain('有码')
+    expect(description).toContain('不要编')
+  })
+
+  it('handler 把 noCodeReason 收敛后转发给宿主（大小写 / 非法值都归一）', async () => {
+    const host = fakeHost()
+    await toolNamed(`${TOOL_PREFIX}keys_upsert`, host).run({
+      entries: [
+        { keyId: 1, code: 'X', revealed: true },
+        { keyId: 2, noCodeReason: '  EXPIRED ' },
+        { keyId: 3, noCodeReason: 'bogus' },
+      ],
+    })
+    expect(host.keysUpsert).toHaveBeenCalledWith([
+      { keyId: 1, code: 'X', revealed: true },
+      { keyId: 2, noCodeReason: 'expired' },
+      { keyId: 3, noCodeReason: 'unknown' },
+    ])
+  })
 })

@@ -86,3 +86,36 @@ describe('key_redeem：登记兑换结果（不提交）', () => {
     expect(repo.getKey(keyId)?.redeemStatus).toBe('not_redeemed')
   })
 })
+
+describe('keys_upsert：无码缘由写入与写码清空', () => {
+  let repo: LedgerRepository
+
+  beforeEach(() => {
+    state.auditLines.length = 0
+    repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([seedOrder()])
+    state.repo = repo
+  })
+
+  it('没有码、给了缘由 → 写进台账；非法值收敛成 unknown（不报错）', async () => {
+    const host = createLedgerHost(createAuditLogger())
+    const keyId = repo.listKeys().items[0]?.id as number
+
+    const result = await host.keysUpsert([{ keyId, noCodeReason: '  EXPIRED ' }])
+
+    expect(result.written).toBe(1)
+    expect(repo.getKey(keyId)?.noCodeReason).toBe('expired')
+  })
+
+  it('先写缘由、后写码 → 缘由被清掉（有码与缘由互斥）', async () => {
+    const host = createLedgerHost(createAuditLogger())
+    const keyId = repo.listKeys().items[0]?.id as number
+
+    await host.keysUpsert([{ keyId, noCodeReason: 'expired' }])
+    expect(repo.getKey(keyId)?.noCodeReason).toBe('expired')
+
+    await host.keysUpsert([{ keyId, code: 'CODE-A', revealed: true }])
+    expect(repo.getKey(keyId)?.noCodeReason).toBeNull()
+    expect(repo.getKey(keyId)?.redeemCode).toBe('CODE-A')
+  })
+})

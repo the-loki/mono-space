@@ -221,3 +221,42 @@ describe('没有 key 的订单也要记得住（音乐 / 电子书下载包之�
     expect(order.bundles).toEqual([])
   })
 })
+
+describe('无码缘由由 agent 给出（应用只收敛，不自己猜）', () => {
+  it('未揭示、拿不到码时带上缘由 → 透传进 SyncedKey', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'g',
+      keys: [{ name: 'X', revealed: false, noCodeReason: 'expired' }],
+    })
+    expect(order.bundles[0]?.keys[0]?.noCodeReason).toBe('expired')
+  })
+
+  it('取值只做大小写 / 空白归一；认不出的落 unknown（一行不连累整单）', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'g',
+      keys: [
+        { name: 'A', revealed: false, noCodeReason: ' Exhausted ' },
+        { name: 'B', revealed: false, noCodeReason: 'bogus' },
+        { name: 'C', revealed: false },
+      ],
+    })
+    expect(order.bundles[0]?.keys.map((key) => key.noCodeReason)).toEqual([
+      'exhausted',
+      'unknown',
+      null,
+    ])
+  })
+
+  it('没给缘由 → null（不默认成 unknown，免得把「还没判定」说成「原因不明」）', () => {
+    const order = buildPageOrder({ orderGamekey: 'g', keys: [{ name: 'X', revealed: false }] })
+    expect(order.bundles[0]?.keys[0]?.noCodeReason).toBeNull()
+  })
+
+  it('有码的行不留缘由（「有码」与「无码缘由」互斥）', () => {
+    const order = buildPageOrder({
+      orderGamekey: 'g',
+      keys: [{ name: 'X', revealed: true, code: 'CODE', noCodeReason: 'expired' }],
+    })
+    expect(order.bundles[0]?.keys[0]?.noCodeReason).toBeNull()
+  })
+})

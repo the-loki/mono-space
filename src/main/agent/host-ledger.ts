@@ -11,6 +11,7 @@
 import { getStoreSession } from '../browser/store-session'
 import { humbleOrderUrl } from '../browser/store-urls'
 import { openStoreView } from '../browser/store-view'
+import { normalizeNoCodeReason } from '../data/no-code-reason'
 import { REDEEM_STATUSES } from '../data/types'
 import { ledgerRepository } from '../ipc/ledger'
 import { createDefaultSyncClient, runHumbleSync } from '../ipc/sync'
@@ -124,10 +125,20 @@ export function createLedgerHost(audit: AuditLogger): LedgerHost {
       let absorbed = 0
       for (const entry of entries) {
         if (entry.revealed && entry.code) {
+          // 写码路径：markRevealed 会把 no_code_reason 一并清掉（有码与无码缘由互斥）。
           const result = repository.markRevealed(entry.keyId, entry.code)
           if (result.hit) {
             written += 1
             absorbed += result.absorbed
+          }
+          continue
+        }
+        // 没有码：只有 agent **明确给了**缘由才写（拿不到码时必须给；有码不用给）。
+        // 写入前收敛一次，非法值落 unknown——绝不抛错、也绝不因一行取值奇怪连累整批。
+        if (entry.noCodeReason !== undefined && entry.noCodeReason !== null) {
+          const reason = normalizeNoCodeReason(entry.noCodeReason)
+          if (reason !== null && repository.setNoCodeReason(entry.keyId, reason)) {
+            written += 1
           }
         }
       }

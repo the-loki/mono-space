@@ -12,6 +12,7 @@ import {
 } from 'node:sqlite'
 import { canonicalJson, fingerprintOrders } from './diff'
 import { migrate } from './migrate'
+import { normalizeNoCodeReason } from './no-code-reason'
 import { API_SUPPLEMENT_PREFIX } from './page-api-merge'
 import {
   buildLedgerExport,
@@ -29,6 +30,7 @@ import {
   type KeyQuery,
   type LedgerExportRow,
   type LedgerView,
+  type NoCodeReason,
   type OrderSnapshotInput,
   type OrderSnapshotRecord,
   type OrderSummary,
@@ -72,6 +74,7 @@ const KEY_LIST_COLUMNS = `
   k.name AS key_name,
   k.key_type AS key_type,
   k.platform AS platform,
+  k.no_code_reason AS no_code_reason,
   k.reveal_status AS reveal_status,
   k.revealed_at AS revealed_at,
   k.redeem_status AS redeem_status,
@@ -251,6 +254,13 @@ export class LedgerRepository {
                redeem_status = COALESCE(?, redeem_status),
                redeemed_at = COALESCE(?, redeemed_at),
                redeem_code = COALESCE(?, redeem_code),
+               -- 写码时必须清掉缘由：有码的行上留下过期缘由会是假数据。
+               -- CASE 的两个实参顺序必须与这里占位符出现顺序一致：
+               -- 先「本次传入的码」，再「本次传入的缘由」。
+               no_code_reason = CASE
+                 WHEN COALESCE(?, redeem_code) IS NOT NULL THEN NULL
+                 ELSE COALESCE(?, no_code_reason)
+               END,
                raw_json = ?,
                updated_at = ?
          WHERE id = ?`,
@@ -267,6 +277,9 @@ export class LedgerRepository {
         nullable(key.redeemStatus),
         nullable(key.redeemedAt),
         nullable(key.redeemCode),
+        // 与上面 `redeem_code = COALESCE(?, redeem_code)` 同一个值：CASE 拿它判断「本次有没有码」。
+        nullable(key.redeemCode),
+        nullable(key.noCodeReason),
         rawJson,
         now,
         id,
@@ -281,9 +294,9 @@ export class LedgerRepository {
     const result = this.stmt(
       `INSERT INTO keys
          (account_id, bundle_id, remote_id, name, key_type, platform,
-          reveal_status, revealed_at, redeem_status, redeemed_at, redeem_code,
+          reveal_status, revealed_at, redeem_status, redeemed_at, redeem_code, no_code_reason,
           raw_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       this.accountId,
       bundleId,
@@ -296,6 +309,7 @@ export class LedgerRepository {
       key.redeemStatus ?? 'not_redeemed',
       nullable(key.redeemedAt),
       nullable(key.redeemCode),
+      nullable(key.noCodeReason),
       rawJson,
       now,
       now,
@@ -349,13 +363,32 @@ export class LedgerRepository {
   ): { hit: boolean; absorbed: number } {
     const result = this.stmt(
       `UPDATE keys
-         SET reveal_status = 'revealed', revealed_at = ?, redeem_code = ?, updated_at = ?
+         SET reveal_status = 'revealed', revealed_at = ?, redeem_code = ?, updated_at = ?,
+             -- 写码即「有码」：缘由必须一并清掉，否则有码的行上会留着过期缘由（假数据）。
+             no_code_reason = NULL
        WHERE id = ? AND account_id = ?`,
     ).run(revealedAt, redeemCode, nowIso(), keyId, this.accountId)
     if (Number(result.changes) === 0) {
       return { hit: false, absorbed: 0 }
     }
     return { hit: true, absorbed: this.absorbApiSupplements(redeemCode) }
+  }
+
+  /**
+   * 记录 / 清掉一条 key 的**无码缘由**（逐行）。
+   *
+   * `reason` 是 agent 判断后经 `normalizeNoCodeReason` 收敛过的值（或 null 清掉）。
+   * 有码的行**永远**清成 NULL：缘由与码互斥，「有码的行上带着过期缘由」是假数据。
+   * 返回是否命中一行。
+   */
+  setNoCodeReason(keyId: number, reason: NoCodeReason | null): boolean {
+    const result = this.stmt(
+      `UPDATE keys
+         SET no_code_reason = CASE WHEN redeem_code IS NOT NULL THEN NULL ELSE ? END,
+             updated_at = ?
+       WHERE id = ? AND account_id = ?`,
+    ).run(reason, nowIso(), keyId, this.accountId)
+    return Number(result.changes) > 0
   }
 
   /** 更新兑换状态；redeemed 未显式给时间时补当前时间。 */
@@ -676,6 +709,9 @@ function mapKeyListItem(row: Record<string, SQLOutputValue>): KeyListItem {
   return {
     id: Number(row.id),
     platform: (text(row.platform) ?? 'unknown') as Platform,
+    // 用收敛函数而不是 `text()` + 强转：库里可能是历史 / 导入写进的非枚举串，
+    // 读的时候一律收敛，界面永远只看到四个合法值之一或 null。
+    noCodeReason: normalizeNoCodeReason(row.no_code_reason),
     accountId: text(row.account_id) ?? DEFAULT_ACCOUNT_ID,
     orderId: Number(row.order_id),
     orderRemoteId: text(row.order_remote_id) ?? '',

@@ -48,6 +48,16 @@ describe('按订单读 key 的内置任务提示词', () => {
     expect(prompt).toContain('绝不重放')
     expect(prompt).toContain('两个阶段都适用')
   })
+
+  it('拿不到码时必须给无码缘由，取值枚举写清、有码不用给、判不出写 unknown', () => {
+    expect(prompt).toContain('noCodeReason')
+    for (const reason of ['expired', 'exhausted', 'link_only', 'unknown']) {
+      expect(prompt).toContain(reason)
+    }
+    expect(prompt).toContain('拿不到')
+    expect(prompt).toContain('有码')
+    expect(prompt).toContain('不要编')
+  })
 })
 
 describe('揭示单条 key 的内置任务提示词', () => {
@@ -106,5 +116,13 @@ describe('兑换单条 key 的内置任务提示词（代理驱动）', () => {
   it('沿用纪律：只用简体中文 / 不用接口取码', () => {
     expect(prompt).toContain('只用简体中文作答，一个英文词都不要出现')
     expect(prompt).toContain('不要用接口取码')
+  })
+
+  it('拿不到码时必须给无码缘由（枚举写清、有码不用给、判不出写 unknown）', () => {
+    expect(prompt).toContain('noCodeReason')
+    for (const reason of ['expired', 'exhausted', 'link_only', 'unknown']) {
+      expect(prompt).toContain(reason)
+    }
+    expect(prompt).toContain('不要编')
   })
 })

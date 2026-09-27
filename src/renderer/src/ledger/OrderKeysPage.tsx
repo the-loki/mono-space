@@ -137,6 +137,7 @@ export function OrderKeysPage({
           <span>资产</span>
           <span>平台</span>
           <span>揭示状态</span>
+          <span>无码缘由</span>
           <span>兑换状态</span>
           <span>动作</span>
         </div>

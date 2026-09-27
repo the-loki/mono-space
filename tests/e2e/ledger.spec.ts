@@ -73,6 +73,9 @@ function seedLedger(dbPath: string): SeedResult {
         revealStatus: revealed ? 'revealed' : 'unrevealed',
         redeemStatus: redeemed ? 'redeemed' : 'not_redeemed',
         redeemCode: revealed ? `SECRET-CODE-${index}` : null,
+        // 只给**一行没有码的 key** 带无码缘由（fixture 追加字段，不改既有造数与断言）：
+        // 界面应在明细里出徽章，有码的行不出。key-0 是未揭示（无码）的第一行。
+        noCodeReason: !revealed && index === 0 ? 'expired' : null,
       })
       counts.total += 1
       if (!revealed) counts.unrevealed += 1
@@ -190,6 +193,17 @@ test('订单主视图 + 单订单明细：虚拟滚动、四态筛选、状态�
     // 状态双列都在首行可见。
     await expect(rows.first().locator('[data-testid="reveal-status"]')).toBeVisible()
     await expect(rows.first().locator('[data-testid="redeem-status"]')).toBeVisible()
+
+    // 无码缘由：fixture 里只有 key-0 那一行**没有码**、带 'expired'；界面在该行出徽章。
+    const reasonBadge = page.locator('[data-testid="key-no-code-reason"]')
+    await expect(reasonBadge).toHaveCount(1)
+    await expect(reasonBadge).toHaveAttribute('data-reason', 'expired')
+    await expect(reasonBadge).toHaveText('已过期')
+    // 徽章挂在**未揭示（无码）**的那一行上。
+    await expect(rows.first()).toHaveAttribute('data-reveal-status', 'unrevealed')
+    await expect(rows.first().locator('[data-testid="key-no-code-reason"]')).toBeVisible()
+    // 有码的行**不出**这个徽章：第二行已揭示、有兑换码。
+    await expect(rows.nth(1).locator('[data-testid="key-no-code-reason"]')).toHaveCount(0)
 
     const allIds = await renderedIds()
 

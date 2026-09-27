@@ -9,6 +9,7 @@
  * 权限分层沿用 `#13`：只读自动放行；写入自动但留痕；不可逆写入必须人在环路。
  */
 import { type TObject, Type } from 'typebox'
+import { normalizeNoCodeReason } from '../data/no-code-reason'
 import type { PageOrderRead } from '../data/page-ingest'
 import type { RedeemStatus } from '../data/types'
 import type { BrowserHost } from './host-contract'
@@ -80,6 +81,8 @@ export interface KeyUpsertEntry {
   code?: string | null
   /** 从页面读到的揭示状态。 */
   revealed?: boolean
+  /** 拿不到码时的无码缘由（可选；有码不用给）。原始字符串，写入前由应用收敛。 */
+  noCodeReason?: string | null
 }
 
 /**
@@ -151,6 +154,29 @@ export function createTools(host: McpHost): ToolSpec[] {
       ? spec.description
       : `${MONOSPACE_TAG} ${spec.description}`,
   }))
+}
+
+/**
+ * 收敛 agent 交上来的无码缘由（有则收敛，无则**原样不动**）。
+ *
+ * 「无则原样不动」是有意的：不往转发对象里塞 `noCodeReason: null`，
+ * 免得改变「没给这一字段」的语义（也让既有转发断言保持逐字相同）。
+ */
+function normalizeNoCodeReasonField<T extends { noCodeReason?: string | null }>(entry: T): T {
+  if (entry.noCodeReason === undefined) {
+    return entry
+  }
+  return { ...entry, noCodeReason: normalizeNoCodeReason(entry.noCodeReason) }
+}
+
+/** 收敛 `keys_upsert` 每条 entry 的无码缘由。 */
+function normalizeKeyUpsertEntries(entries: KeyUpsertEntry[]): KeyUpsertEntry[] {
+  return entries.map(normalizeNoCodeReasonField)
+}
+
+/** 收敛 `keys_ingest` 每条页面 key 的无码缘由（`buildPageOrder` 还会再收敛一次，幂等）。 */
+function normalizePageReadKeys(keys: PageOrderRead['keys']): PageOrderRead['keys'] {
+  return keys.map(normalizeNoCodeReasonField)
 }
 
 /** 领域工具（MonoSpace 自己的台账 / 同步 / 揭示 / 兑换）。 */
@@ -262,6 +288,19 @@ function createDomainTools(host: McpHost): ToolSpec[] {
                 '**逐行判断**：同一订单页可能混排多个平台（同一次订单里 Epic 与 Unity 并存是实测过的），' +
                 '每一行看它自己的「Redemption Instructions」链接以及该行文案；**不要假设「一页一平台」**。',
             }),
+            // **可选**：有码的行不用给。取值自由字符串、不做枚举约束，应用侧只收敛：
+            // 认不出的值落 `unknown`，绝不回滚整笔写入（一行取值奇怪不该连累整单）。
+            noCodeReason: Type.Optional(
+              Type.String({
+                description:
+                  '这一行**没有兑换码**时的缘由（**有码就不用给**）。取值：' +
+                  'expired（已过期）/ exhausted（发行方缺货）/ link_only（仅外部链接）/ unknown（原因不明）。' +
+                  '依据：页面写「此密钥已过期,不能再兑换」→ expired；' +
+                  '点揭示后页面回「本产品密钥暂时耗尽 / 该产品密钥暂时已用尽」→ exhausted；' +
+                  '只能去第三方商店凭链接领取、页面没有密钥栏 / 揭示控件 → link_only；' +
+                  '**判不出来写 unknown，不要编**。取值由应用收敛（非法值落 unknown，不会让整笔失败）。',
+              }),
+            ),
           }),
           {
             description:
@@ -277,7 +316,7 @@ function createDomainTools(host: McpHost): ToolSpec[] {
           orderGamekey: input.orderGamekey as string,
           productName: input.productName as string | undefined,
           bundleName: input.bundleName as string | undefined,
-          keys: input.keys as PageOrderRead['keys'],
+          keys: normalizePageReadKeys(input.keys as PageOrderRead['keys']),
         }),
     },
     {
@@ -301,11 +340,20 @@ function createDomainTools(host: McpHost): ToolSpec[] {
             keyId: Type.Integer({ minimum: 1 }),
             code: Type.Optional(Type.Union([Type.String(), Type.Null()])),
             revealed: Type.Optional(Type.Boolean()),
+            // **可选**：有码不用给；拿不到码时必须给。自由字符串、不做枚举约束，应用侧只收敛。
+            noCodeReason: Type.Optional(
+              Type.String({
+                description:
+                  '这一行**拿不到码**时的缘由（**有码就不用给**）。取值：' +
+                  'expired（已过期）/ exhausted（发行方缺货）/ link_only（仅外部链接）/ unknown（原因不明）。' +
+                  '**判不出来写 unknown，不要编**。取值由应用收敛，不会让你整笔失败。',
+              }),
+            ),
           }),
           { minItems: 1, maxItems: 500 },
         ),
       }),
-      run: (input) => host.keysUpsert(input.entries as KeyUpsertEntry[]),
+      run: (input) => host.keysUpsert(normalizeKeyUpsertEntries(input.entries as KeyUpsertEntry[])),
     },
     {
       name: `${TOOL_PREFIX}key_open`,

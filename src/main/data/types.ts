@@ -15,6 +15,7 @@ import type {
   KeyPage,
   KeyQuery,
   LedgerView,
+  NoCodeReason,
   OrderSummary,
   Platform,
   RedeemStatus,
@@ -26,6 +27,7 @@ export type {
   KeyPage,
   KeyQuery,
   LedgerView,
+  NoCodeReason,
   OrderSummary,
   Platform,
   RedeemStatus,
@@ -65,6 +67,8 @@ export interface SyncedKey {
   redeemStatus?: RedeemStatus
   redeemedAt?: string | null
   redeemCode?: string | null
+  /** 无码缘由（由 agent 判断后给出；有码时应为 null）。取值经 `normalizeNoCodeReason` 收敛。 */
+  noCodeReason?: NoCodeReason | null
 }
 
 /** 同步进来的单个资产包。 */
@@ -168,7 +172,14 @@ interface LedgerExportOwnerFields {
  */
 type LedgerKeyFieldName = Exclude<
   keyof KeyDetail,
-  keyof LedgerExportOwnerFields | 'id' | 'orderId' | 'bundleId'
+  | keyof LedgerExportOwnerFields
+  | 'id'
+  | 'orderId'
+  | 'bundleId'
+  // 无码缘由本次**不进导出**（导出目前没有任何出口，是 docs/verify/33-full-test.md §0
+  // 记录的已知问题；等导出修好再加）。显式排除它，好让「列表加了字段就逼导出加列」的
+  // `satisfies` 闸门不被它触发（否则导出会多一列，既动了 CSV 末列约定，又要改 serialize.ts）。
+  | 'noCodeReason'
 >
 
 /**

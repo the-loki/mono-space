@@ -453,3 +453,126 @@ describe('台账按订单过滤（D3）', () => {
     repo.close()
   })
 })
+
+/** 造一条只有单个 key 的订单，便于逐项覆盖 noCodeReason。 */
+function orderWithOneKey(key: SyncedKey): SyncedOrder {
+  return {
+    remoteId: 'order-nc',
+    bundles: [{ remoteId: 'bundle-nc', name: '无码包', keys: [key] }],
+  }
+}
+
+describe('无码缘由 no_code_reason（逐行、可空；由 agent 给出）', () => {
+  it('写入带缘由的 key → 列表读回是枚举值', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({ remoteId: 'key-nc', name: '无码资产', noCodeReason: 'expired' }),
+    ])
+    expect(repo.listKeys().items[0]?.noCodeReason).toBe('expired')
+    repo.close()
+  })
+
+  it('非法 / 未知串经收敛落 unknown，不报错也不原样落库', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({
+        remoteId: 'key-nc',
+        name: '无码资产',
+        // 模拟库里已有的脏值（历史 / 手改）：写入侧类型是枚举，这里刻意绕过以验证**读侧收敛**。
+        noCodeReason: 'totally-not-valid' as SyncedKey['noCodeReason'],
+      }),
+    ])
+    expect(repo.listKeys().items[0]?.noCodeReason).toBe('unknown')
+    repo.close()
+  })
+
+  it('空串 / 纯空白 → null（＝「有码」或「还没判定」）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({
+        remoteId: 'key-nc',
+        name: '无码资产',
+        // 同上：刻意写入空白值，验证读侧当 null 处理。
+        noCodeReason: '   ' as SyncedKey['noCodeReason'],
+      }),
+    ])
+    expect(repo.listKeys().items[0]?.noCodeReason).toBeNull()
+    repo.close()
+  })
+
+  it('列表投影含 noCodeReason，但仍**不含兑换码明文**（逐行缘由不是明文）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({ remoteId: 'key-nc', name: '无码资产', noCodeReason: 'link_only' }),
+    ])
+    const item = repo.listKeys().items[0] as unknown as Record<string, unknown>
+    expect(item).not.toHaveProperty('redeemCode')
+    expect(item.noCodeReason).toBe('link_only')
+    repo.close()
+  })
+
+  it('写码后缘由被清空（关键回归：有码的行上不得留着过期缘由）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({ remoteId: 'key-nc', name: '无码资产', noCodeReason: 'expired' }),
+    ])
+    const id = repo.listKeys().items[0]?.id as number
+
+    // 页面重读：这一行现已揭示并读到码 ⇒ upsertKey 的 CASE 必须把缘由清掉。
+    repo.applyOrderSync([
+      orderWithOneKey({
+        remoteId: 'key-nc',
+        name: '无码资产',
+        noCodeReason: 'expired',
+        revealStatus: 'revealed',
+        redeemCode: 'NEW-CODE',
+      }),
+    ])
+
+    const after = repo.listKeys().items[0]
+    expect(after?.noCodeReason).toBeNull()
+    expect(repo.getKey(id)?.redeemCode).toBe('NEW-CODE')
+    repo.close()
+  })
+
+  it('markRevealed 写码也清缘由（揭示写回路径同样不得留过期缘由）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({ remoteId: 'key-nc', name: '无码资产', noCodeReason: 'exhausted' }),
+    ])
+    const id = repo.listKeys().items[0]?.id as number
+
+    repo.markRevealed(id, 'REVEALED-CODE')
+
+    expect(repo.listKeys().items[0]?.noCodeReason).toBeNull()
+    repo.close()
+  })
+
+  it('重读只给缘由、不给码时，缘由被更新（而不是被 COALESCE 挡住）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({ remoteId: 'key-nc', name: '无码资产', noCodeReason: 'expired' }),
+    ])
+    repo.applyOrderSync([
+      orderWithOneKey({ remoteId: 'key-nc', name: '无码资产', noCodeReason: 'link_only' }),
+    ])
+    expect(repo.listKeys().items[0]?.noCodeReason).toBe('link_only')
+    repo.close()
+  })
+
+  it('setNoCodeReason 给有码的行写缘由也会被清成 null（缘由与码互斥的兜底）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithOneKey({
+        remoteId: 'key-nc',
+        name: '有码资产',
+        revealStatus: 'revealed',
+        redeemCode: 'CODE',
+      }),
+    ])
+    const id = repo.listKeys().items[0]?.id as number
+    expect(repo.setNoCodeReason(id, 'expired')).toBe(true)
+    expect(repo.listKeys().items[0]?.noCodeReason).toBeNull()
+    repo.close()
+  })
+})

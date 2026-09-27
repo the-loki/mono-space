@@ -82,6 +82,14 @@ export const MIGRATIONS: readonly Migration[] = [
         ALTER TABLE orders DROP COLUMN currency;
       `),
   },
+  {
+    version: 6,
+    name: 'keys-no-code-reason',
+    // 无码缘由（逐行、可空）：这条 key 拿不到兑换码时的原因，由 **agent** 判断后给出
+    //（ADR-0006 的思路：页面文案的语义判断归 agent，应用侧不写正则去猜）。
+    // 留 NULL 表示「有码」或「还没判定」；老库已有数据 → 加列即可，默认 NULL。
+    up: (db) => db.exec('ALTER TABLE keys ADD COLUMN no_code_reason TEXT'),
+  },
 ]
 
 /** 读取当前 schema 版本；schema_version 表不存在时视为 0。 */

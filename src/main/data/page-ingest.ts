@@ -12,6 +12,7 @@
  *
  * 特征匹配已删除后，`keytype` / `keyindex` 不再被揭示流程需要，所以显示名做身份是够的。
  */
+import { normalizeNoCodeReason } from './no-code-reason'
 import {
   PLATFORMS,
   type Platform,
@@ -58,6 +59,13 @@ export interface PageKeyRead {
    * 取值经 `normalizePlatform` 收敛：缺失 / 空串 / 非法值都落 `unknown`，不会让写入失败。
    */
   platform?: string | null
+  /**
+   * 这一行**拿不到兑换码**时，agent 逐行判断出的无码缘由（台账枚举，判不出时给 `unknown`）。
+   *
+   * 有码的行**不需要**给。取值经 `normalizeNoCodeReason` 收敛：
+   * 缺失 / 空串 / 空白 → `null`（＝有码或没判定），非空但认不出 → `unknown`，不会让写入失败。
+   */
+  noCodeReason?: string | null
 }
 
 /** agent 在页面上读到的一整单。 */
@@ -124,20 +132,26 @@ export function pageKeyRemoteIds(keys: readonly PageKeyRead[]): string[] {
 export function buildPageOrder(read: PageOrderRead): SyncedOrder {
   const ids = pageKeyRemoteIds(read.keys)
 
-  const keys: SyncedKey[] = read.keys.map((key, index) => ({
-    remoteId: ids[index] as string,
-    name: key.name,
-    // key_type 留空：页面不提供机器名，硬编一个假的是在制造假数据。
-    keyType: null,
-    // 平台由 agent 逐行判断后交上来；这里只收敛取值（非法 / 缺失 → unknown），不替它判断。
-    platform: normalizePlatform(key.platform),
-    revealStatus: key.revealed ? 'revealed' : 'unrevealed',
-    revealedAt: null,
-    redeemStatus: 'not_redeemed',
-    redeemedAt: null,
+  const keys: SyncedKey[] = read.keys.map((key, index) => {
     // 码只在「页面确认已揭示且真的读到了」时带上。
-    redeemCode: key.revealed ? key.code?.trim() || null : null,
-  }))
+    const redeemCode = key.revealed ? key.code?.trim() || null : null
+    return {
+      remoteId: ids[index] as string,
+      name: key.name,
+      // key_type 留空：页面不提供机器名，硬编一个假的是在制造假数据。
+      keyType: null,
+      // 平台由 agent 逐行判断后交上来；这里只收敛取值（非法 / 缺失 → unknown），不替它判断。
+      platform: normalizePlatform(key.platform),
+      // 无码缘由同样由 agent 判断后交上来；这里只收敛取值。
+      // **有码的行不留缘由**：缘由与码互斥，有码说明这一行不存在「拿不到码」的问题。
+      noCodeReason: redeemCode ? null : normalizeNoCodeReason(key.noCodeReason),
+      revealStatus: key.revealed ? 'revealed' : 'unrevealed',
+      revealedAt: null,
+      redeemStatus: 'not_redeemed',
+      redeemedAt: null,
+      redeemCode,
+    }
+  })
 
   // 页面**没有 key** 的订单（音乐 / 电子书下载包之类）也要落库 —— 我们其实知道它是什么，
   // 不写的话界面只能永远显示「未读取」。但没有 key 就不建空资产包，免得台账里多出无意义的空包。

@@ -1,7 +1,7 @@
 /**
  * 状态 → 中文标签。揭示状态 / 兑换状态两列各自独立显示（规格 #14 §5）。
  */
-import type { Platform, RedeemStatus, RevealStatus } from './types'
+import type { NoCodeReason, Platform, RedeemStatus, RevealStatus } from './types'
 
 /** 揭示状态标签。 */
 export const REVEAL_STATUS_LABELS: Record<RevealStatus, string> = {
@@ -34,6 +34,20 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   unity: 'Unity',
   gog: 'GOG',
   unknown: '未知',
+}
+
+/**
+ * 无码缘由标签（由 agent 判断后落库，界面只做展示）。
+ *
+ * 取值依据（本仓库真实数据实证）：页面写「此密钥已过期,不能再兑换」→ expired；
+ * 点揭示后回「本产品密钥暂时耗尽 / 该产品密钥暂时已用尽」→ exhausted；
+ * 只能去第三方商店凭链接领取、页面没有密钥栏 / 揭示控件 → link_only；判不出来 → unknown。
+ */
+export const NO_CODE_REASON_LABELS: Record<NoCodeReason, string> = {
+  expired: '已过期',
+  exhausted: '发行方缺货',
+  link_only: '仅外部链接',
+  unknown: '原因不明',
 }
 
 /** 揭示状态标签，未知值原样回退，保证 UI 不崩。 */

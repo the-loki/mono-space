@@ -37,6 +37,20 @@ export type RedeemStatus =
  */
 export type Platform = 'fab' | 'epic' | 'steam' | 'unity' | 'gog' | 'unknown'
 
+/**
+ * 无码缘由：这条 key 在页面上**拿不到兑换码**时的原因。
+ *
+ * **只有 agent 能给**（与平台同一条边界，ADR-0006）：页面文案是语义判断，
+ * 应用侧不写正则去猜（那类代码已被明确删除）。schema 里落的是自由字符串，
+ * 应用侧只用 `normalizeNoCodeReason` 收敛取值，绝不因为一行取值奇怪就回滚整笔写入。
+ *
+ * 取值依据（本仓库真实数据实证）：页面写「此密钥已过期,不能再兑换」→ `expired`；
+ * 点揭示后回「本产品密钥暂时耗尽 / 该产品密钥暂时已用尽」→ `exhausted`；
+ * 只能去第三方商店凭链接领取、页面没有密钥栏 / 揭示控件 → `link_only`；
+ * 判不出来 → `unknown`（**合法答案，不算漏传；但不许编**）。
+ */
+export type NoCodeReason = 'expired' | 'exhausted' | 'link_only' | 'unknown'
+
 /** 台账视图：任务要求的三类筛选，外加 all。 */
 export type LedgerView = 'all' | 'unrevealed' | 'revealed_unredeemed' | 'redeemed'
 
@@ -56,6 +70,13 @@ export interface KeyListItem {
   keyType: string | null
   /** 平台（逐条判断，见 `Platform`）。 */
   platform: Platform
+  /**
+   * 无码缘由（逐行、可空）：这条 key 没有兑换码时的原因。
+   *
+   * `null` ＝「有码」或「还没判定」——写码时该字段会被清空（见仓储 `upsertKey`），
+   * 所以「非 null」就等价于「无码且已判定」，界面无需另问「有没有码」。
+   */
+  noCodeReason: NoCodeReason | null
   revealStatus: RevealStatus
   revealedAt: string | null
   redeemStatus: RedeemStatus

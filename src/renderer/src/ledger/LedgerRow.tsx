@@ -5,7 +5,12 @@
  * 行高必须与 `window.ts` 的 `LEDGER_ROW_HEIGHT` 一致：e2e 用它算占位高度，改这里必须同步。
  */
 import type { JSX } from 'react'
-import { PLATFORM_LABELS, redeemStatusLabel, revealStatusLabel } from './labels'
+import {
+  NO_CODE_REASON_LABELS,
+  PLATFORM_LABELS,
+  redeemStatusLabel,
+  revealStatusLabel,
+} from './labels'
 import type { LedgerListItem } from './types'
 import { LEDGER_ROW_HEIGHT } from './window'
 
@@ -17,7 +22,8 @@ export type LedgerAction = 'reveal' | 'redeem'
  * 为什么没有「包」列：包身份就是 `<gamekey>_page`，而本视图已经限定在**一个订单**内，
  * 实测 68 单没有一单挂两个包（多包情况为空）——那列每一行都在重复同一个值，
  * 白占 1.6fr 宽度，把「资产」名挤到截断。要看包名去导出/详情标题。 */
-export const LEDGER_GRID = 'grid grid-cols-[minmax(0,3fr)_5rem_6rem_6.5rem_6rem] items-center gap-3'
+export const LEDGER_GRID =
+  'grid grid-cols-[minmax(0,3fr)_5rem_6rem_7rem_6.5rem_6rem] items-center gap-3'
 
 interface LedgerRowProps {
   item: LedgerListItem
@@ -69,6 +75,20 @@ function redeemTone(status: LedgerListItem['redeemStatus']): string {
   }
 }
 
+/**
+ * 无码缘由配色：过期 / 发行方缺货＝橙色（这一行暂时无解，值得留意）；
+ * 仅外部链接 / 原因不明＝灰色（中性）。颜色只是辅助，含义始终由中文文案承载。
+ */
+function noCodeReasonTone(reason: NonNullable<LedgerListItem['noCodeReason']>): string {
+  switch (reason) {
+    case 'expired':
+    case 'exhausted':
+      return 'badge-warn'
+    default:
+      return 'badge-muted'
+  }
+}
+
 /** 一行台账记录。 */
 export function LedgerRow({ item, busy = false, onAction }: LedgerRowProps): JSX.Element {
   const action = actionFor(item)
@@ -90,6 +110,20 @@ export function LedgerRow({ item, busy = false, onAction }: LedgerRowProps): JSX
         <StatusPill tone={revealTone(item.revealStatus)}>
           {revealStatusLabel(item.revealStatus)}
         </StatusPill>
+      </span>
+      {/* 无码缘由：只有**没有码**的行才有值（写码时会被清空，见 repository），
+          所以这里不必另问「有没有码」；列头已说明是哪一栏，徽章只写缘由本身。 */}
+      <span>
+        {item.noCodeReason && (
+          <span
+            data-testid="key-no-code-reason"
+            data-reason={item.noCodeReason}
+            title={`无码缘由：${NO_CODE_REASON_LABELS[item.noCodeReason]}`}
+            className={`badge ${noCodeReasonTone(item.noCodeReason)}`}
+          >
+            {NO_CODE_REASON_LABELS[item.noCodeReason]}
+          </span>
+        )}
       </span>
       <span data-testid="redeem-status">
         <StatusPill tone={redeemTone(item.redeemStatus)}>
@@ -125,6 +159,7 @@ export function LedgerSkeletonRow({ index }: { index: number }): JSX.Element {
     >
       <span className="h-3 w-40 animate-pulse rounded bg-line-strong" />
       <span className="h-3 w-12 animate-pulse rounded bg-line" />
+      <span className="h-3 w-14 animate-pulse rounded bg-line" />
       <span className="h-3 w-14 animate-pulse rounded bg-line" />
       <span className="h-3 w-14 animate-pulse rounded bg-line" />
       <span className="h-3 w-14 animate-pulse rounded bg-line" />

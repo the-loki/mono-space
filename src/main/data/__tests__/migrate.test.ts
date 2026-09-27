@@ -75,7 +75,8 @@ describe('迁移', () => {
 
     expect(result.from).toBe(0)
     expect(result.to).toBe(SCHEMA_VERSION)
-    // 新库要把全部迁移按顺序跑完（v1 建表 + v2 加 platform 列 + v3 删 engine 列 + v4 修数据 + v5 删死列）。
+    // 新库要把全部迁移按顺序跑完
+    //（v1 建表 + v2 加 platform 列 + v3 删 engine 列 + v4 修数据 + v5 删死列 + v6 加 no_code_reason 列）。
     expect(result.applied).toEqual(MIGRATIONS.map((migration) => migration.version))
     expect(currentSchemaVersion(db)).toBe(SCHEMA_VERSION)
 
@@ -179,6 +180,9 @@ describe('迁移', () => {
     db.close()
   })
 
+  // v5 之前的迁移链（v6 是加 no_code_reason 列，与本用例的 v5 断言无关，所以这里只走到 v5）。
+  const upToV5 = MIGRATIONS.slice(0, 5)
+
   it('v5 删掉 orders 的购买时间 / 币种两列（死列）', () => {
     const db = memoryDb()
     // 先升到 v4（v5 之前的历史 schema）：这两列在冻结的 v1 建表时就存在。
@@ -186,7 +190,7 @@ describe('迁移', () => {
     expect(tableColumns(db, 'orders')).toContain('purchased_at')
     expect(tableColumns(db, 'orders')).toContain('currency')
 
-    const result = migrate(db)
+    const result = migrate(db, upToV5)
     expect(result.from).toBe(4)
     expect(result.applied).toEqual([5])
     expect(currentSchemaVersion(db)).toBe(5)
@@ -194,7 +198,7 @@ describe('迁移', () => {
     expect(tableColumns(db, 'orders')).not.toContain('currency')
 
     // 幂等：已经是 v5 的库再跑一次无副作用，列依旧不存在。
-    const again = migrate(db)
+    const again = migrate(db, upToV5)
     expect(again.applied).toEqual([])
     expect(tableColumns(db, 'orders')).not.toContain('purchased_at')
     expect(tableColumns(db, 'orders')).not.toContain('currency')
@@ -205,7 +209,7 @@ describe('迁移', () => {
     // 新库从**冻结的 v1** 建表，所以这两列一开始是存在的，必须由 v5 掉掉。
     const db = memoryDb()
     migrate(db)
-    expect(currentSchemaVersion(db)).toBe(5)
+    expect(currentSchemaVersion(db)).toBe(SCHEMA_VERSION)
     expect(tableColumns(db, 'orders')).not.toContain('purchased_at')
     expect(tableColumns(db, 'orders')).not.toContain('currency')
     db.close()
@@ -228,6 +232,59 @@ describe('迁移', () => {
       product_name: string
     }
     expect(row).toEqual({ remote_id: 'ORDER-1', product_name: '示例订单' })
+    db.close()
+  })
+
+  it('v6 给 keys 加上 no_code_reason 列（无码缘由，逐行、可空）', () => {
+    const db = memoryDb()
+    // 先升到 v5（v6 之前的历史 schema）：当时 keys 还没有这一列。
+    migrate(db, MIGRATIONS.slice(0, 5))
+    expect(currentSchemaVersion(db)).toBe(5)
+    expect(tableColumns(db, 'keys')).not.toContain('no_code_reason')
+
+    const result = migrate(db)
+    expect(result.from).toBe(5)
+    expect(result.applied).toEqual([6])
+    expect(currentSchemaVersion(db)).toBe(6)
+    expect(tableColumns(db, 'keys')).toContain('no_code_reason')
+
+    // 幂等：已经是 v6 的库再跑一次无副作用，列仍在。
+    const again = migrate(db)
+    expect(again.applied).toEqual([])
+    expect(tableColumns(db, 'keys')).toContain('no_code_reason')
+    db.close()
+  })
+
+  it('全新空库跑完迁移链，keys 含 no_code_reason 列', () => {
+    const db = memoryDb()
+    migrate(db)
+    expect(currentSchemaVersion(db)).toBe(SCHEMA_VERSION)
+    expect(tableColumns(db, 'keys')).toContain('no_code_reason')
+    db.close()
+  })
+
+  it('v5 库升 v6 不丢既有 keys 数据（只加列，不动行）', () => {
+    const db = memoryDb()
+    migrate(db, MIGRATIONS.slice(0, 5))
+    const order = seedOrder(db, 'ORDER-1')
+    const bundle = seedBundle(db, order, 'order_1_page')
+    seedKey(db, bundle, 'alpha', 'CODE-A')
+
+    const result = migrate(db)
+    expect(result.from).toBe(5)
+    expect(result.applied).toEqual([6])
+    expect(keyRemoteIds(db)).toEqual(['alpha'])
+    const row = db.prepare('SELECT redeem_code FROM keys WHERE remote_id = ?').get('alpha') as {
+      redeem_code: string | null
+    }
+    expect(row.redeem_code).toBe('CODE-A')
+    // 新列对既有行是 NULL（＝「有码」或「还没判定」）。
+    const reason = db
+      .prepare('SELECT no_code_reason FROM keys WHERE remote_id = ?')
+      .get('alpha') as {
+      no_code_reason: string | null
+    }
+    expect(reason.no_code_reason).toBeNull()
     db.close()
   })
 

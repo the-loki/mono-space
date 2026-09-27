@@ -34,6 +34,12 @@ export type RedeemStatus = LedgerListItem['redeemStatus']
  */
 export type Platform = LedgerListItem['platform']
 
+/**
+ * 无码缘由：这条 key **拿不到兑换码**时的原因（由 agent 判断后写入，界面只做展示）。
+ * `NonNullable` 去掉列表项里的 `null`（`null` ＝「有码」或「还没判定」）。
+ */
+export type NoCodeReason = NonNullable<LedgerListItem['noCodeReason']>
+
 /** 导出格式。 */
 export type LedgerExportFormat = Parameters<LedgerApi['export']>[0]
 
