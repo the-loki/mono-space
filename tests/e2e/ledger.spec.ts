@@ -474,3 +474,66 @@ test('同单同名带码：无码行出提示、计数正确；没有同名带�
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+/**
+ * 兑换终态 `already_owned`（已拥有）：`docs/spec/12` §6 记为「**视同成功**」。
+ *
+ * 这条来自**真机**：`docs/verify/37` 真跑 `key id=197` 得到 `already_owned`，而当时界面
+ * ① 把它染成灰色（配色分支漏了它）、② 仍然显示「兑换」按钮（终态判定只认 `redeemed`）。
+ * 两处都已修，这里钉住行为。
+ */
+test('已拥有的行：显示「已拥有」且**不再给动作按钮**（视同成功，无需再做）', async () => {
+  const { dir, dbPath } = tempLedger()
+  const repo = openLedger({ path: dbPath })
+  repo.applyOrderSync([
+    {
+      remoteId: 'order-owned',
+      productName: '已拥有订单',
+      bundles: [
+        {
+          remoteId: 'order-owned_page',
+          name: '包',
+          keys: [
+            {
+              remoteId: 'k-owned',
+              name: 'Astronauts (Pack)',
+              revealStatus: 'revealed',
+              redeemStatus: 'already_owned',
+              redeemCode: 'OWNED-CODE',
+            },
+            // 对照：普通「未兑换」行必须仍有动作按钮（不能把终态判定改宽了）。
+            {
+              remoteId: 'k-todo',
+              name: '待兑换资产',
+              revealStatus: 'revealed',
+              redeemStatus: 'not_redeemed',
+              redeemCode: 'TODO-CODE',
+            },
+          ],
+        },
+      ],
+    },
+  ])
+  repo.close()
+
+  const app = await launchApp(dbPath)
+  try {
+    const page = await app.firstWindow()
+    await page.locator('[data-testid="order-open-detail"]').first().click()
+
+    const owned = page.locator('[data-testid="ledger-row"][data-redeem-status="already_owned"]')
+    await expect(owned).toHaveCount(1)
+    await expect(owned.locator('[data-testid="redeem-status"]')).toHaveText('已拥有')
+    await expect(owned.locator('[data-testid="ledger-action"]')).toHaveCount(0)
+
+    const todo = page.locator('[data-testid="ledger-row"][data-redeem-status="not_redeemed"]')
+    await expect(todo.locator('[data-testid="ledger-action"]')).toHaveCount(1)
+    await expect(todo.locator('[data-testid="ledger-action"]')).toHaveAttribute(
+      'data-action',
+      'redeem',
+    )
+  } finally {
+    await app.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

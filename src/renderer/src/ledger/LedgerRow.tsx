@@ -32,11 +32,17 @@ interface LedgerRowProps {
   onAction?: (action: LedgerAction, item: LedgerListItem) => void
 }
 
-/** 该行当前能做什么（无则为 null）。 */
+/**
+ * 该行当前能做什么（无则为 null）。
+ *
+ * `already_owned`（已拥有）也算终态、不再给动作 —— `docs/spec/12` §6 明确「已拥有**视同成功**」：
+ * 商品已在账号里，再提交一次只会把码白花掉。这一条是**真机跑出来的**：真跑 `id=197` 得到
+ * `already_owned`，而当时界面还在给它显示「兑换」按钮（`docs/verify/37`）。
+ */
 export function actionFor(item: LedgerListItem): LedgerAction | null {
   if (item.revealStatus !== 'revealed') return 'reveal'
-  if (item.redeemStatus !== 'redeemed') return 'redeem'
-  return null
+  if (item.redeemStatus === 'redeemed' || item.redeemStatus === 'already_owned') return null
+  return 'redeem'
 }
 
 /** 状态胶囊。语义色只是辅助——含义始终由中文标签承载（不靠颜色单独传意）。 */
@@ -56,6 +62,9 @@ function revealTone(status: LedgerListItem['revealStatus']): string {
 function redeemTone(status: LedgerListItem['redeemStatus']): string {
   switch (status) {
     case 'redeemed':
+    case 'already_owned':
+      // `already_owned` 与已兑换同色：`docs/spec/12` §6 把它记为「**视同成功**」
+      //（商品已在账号里，无需再做任何事）。
       return 'badge-done'
     case 'not_redeemed':
       return 'badge-todo'

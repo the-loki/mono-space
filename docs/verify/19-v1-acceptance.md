@@ -104,7 +104,9 @@ SYNC_RESULT={"ok":false,"reason":"not-logged-in","message":"未登录 Humble（�
 
 - [x] 内嵌窗口登录 **Humble**（登录态落在 `persist:store` 分区）—— 证据：真库 68 单来自该账号，
   且多轮任务在内嵌浏览器里真点了订单页的揭示控件（返回的是发行方文案，不是登录页）。
-- [ ] 内嵌窗口登录 **Epic**（Epic 会话覆盖 `epicgames.com` + `fab.com`）—— **未验**，无实测记录。
+- [x] 内嵌窗口登录 **Epic**（Epic 会话覆盖 `epicgames.com` + `fab.com`）—— 证据：`docs/verify/37`
+  的真跑里，agent 打开 Epic 兑换页后**在已登录的兑换表单上成功提交了码**（页面回「你已经拥有此产品」），
+  且 store 分区里有 `.epicgames.com` 的 `EPIC_BEARER_TOKEN`/`_epicSID`。
 - [x] 首次同步跑通（点台账页「同步」）—— 真接口四趟验证见 `docs/verify/32-api-key-supplement.md`。
 - [x] 主界面显示台账 —— 见 `docs/verify/33-full-test.md` §1 与各处截图。
 
@@ -126,8 +128,10 @@ SYNC_RESULT={"ok":false,"reason":"not-logged-in","message":"未登录 Humble（�
   **点击链路真跑过很多次**（`docs/verify/34`：14 单逐行点，`35` §8：另 20 单），
   但**没有一条拿到新码**：发行方耗尽 / 已过期 / 页面根本没有揭示控件（真实库已无「能出码」的未揭示行）。
   也就是说「点得动」已验，「点得出码」未验 —— 需等库里有新的可揭示订单。
-- [ ] 单条**兑换**成功（Fab）：My Library 校验通过，状态变「已兑换」—— **未跑**：真跑要消耗一条密钥（不可逆），
-  需用户指一个可牺牲的 key。ADR-0005 后这条链路是**代理驱动**，目前只有单测覆盖。
+- [x] 单条**兑换**成功：**已真跑**（`docs/verify/37`）—— `key id=197`「Astronauts (Pack)」从
+  `not_redeemed` 变成 `already_owned`：agent 读页面拿到码 → 判平台 → 在 Epic 已登录的兑换表单上
+  **只提交一次** → 读回页面原文 → 登记（审计留痕见 37 §0）。注：Epic 语义下「已拥有」**不消耗码**。
+  仍未验：其它终态（`invalid`/`used`/`region_blocked`/`needs_human`）没有真实样本。
 - ~~未知错误码 → `needs_human`~~ **作废**：代码驱动兑换栈已删除（ADR-0005），`needs_human` 不再是应用侧概念。
   现行等价行为：agent 在拿不到码/看不懂页面时**如实说明并停手**（`docs/verify/34` 实测：4 行无揭示控件、一行都没点），
   缘由逐行落在台账「无码缘由」列（`docs/verify/35`）。
