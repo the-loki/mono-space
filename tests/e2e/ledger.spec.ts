@@ -156,10 +156,18 @@ test('订单主视图 + 单订单明细：虚拟滚动、四态筛选、状态�
     const first = seed.perOrder[0]
     // 明细必须真的是 2000 条规模，否则虚拟滚动断言就是空转。
     expect(first.total).toBe(FIRST_ORDER_KEYS)
+    // 未揭示数 >0 才有徒章可断言（否则下面那条是空转）。
+    expect(first.unrevealed).toBeGreaterThan(0)
     const firstOrder = orderRows.first()
+    // key 计数与未揭示数分两处显示：计数常显（只有总数），未揭示数只在 >0 时出橙色徒章。
     await expect(firstOrder.locator('[data-testid="order-key-count"]')).toHaveText(
-      `${first.total} 个 key·${first.unrevealed} 个未揭示`,
+      `${first.total} 个 key`,
     )
+    await expect(firstOrder.locator('[data-testid="order-unrevealed"]')).toHaveText(
+      `未揭示 ${first.unrevealed}`,
+    )
+    // 计数里不再带「未揭示」——否则 68 行都写「·0 个未揭示」，「该动哪一单」就淹掉了。
+    await expect(firstOrder.locator('[data-testid="order-key-count"]')).not.toContainText('未揭示')
 
     // 整行可点：点商品名（非按钮区域）也能进该单明细。
     await firstOrder.getByText('订单 0', { exact: true }).click()

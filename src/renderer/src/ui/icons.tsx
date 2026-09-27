@@ -221,3 +221,68 @@ export function IconClose({ size = 14, className }: IconProps): JSX.Element {
     </svg>
   )
 }
+
+/** 检索：订单主视图的搜索框。 */
+export function IconSearch({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  )
+}
+
+/** 从页面读取本单 key（落进台账）：向下的箭头 + 承接的托盘。 */
+export function IconIngest({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M12 3v10" />
+      <path d="m8 9 4 4 4-4" />
+      <path d="M4 17v2.5A1.5 1.5 0 0 0 5.5 21h13A1.5 1.5 0 0 0 20 19.5V17" />
+    </svg>
+  )
+}
+
+/** 调试日志：终端窗口。 */
+export function IconTerminal({ size = 16, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="m7 9 2.5 2.5L7 14" />
+      <path d="M12.5 14.5H17" />
+    </svg>
+  )
+}

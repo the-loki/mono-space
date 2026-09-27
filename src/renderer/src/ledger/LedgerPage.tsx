@@ -9,10 +9,36 @@
  * `src/main/debug-window.ts`）。本页只在工具条上给一个入口按钮，通过 `debug:open` 开窗。
  */
 import { type JSX, useCallback, useState } from 'react'
+import { IconAlert, IconTerminal } from '../ui/icons'
 import { OrderKeysPage } from './OrderKeysPage'
 import { OrdersPage } from './OrdersPage'
 import type { LedgerExportFormat, OrderSummary } from './types'
 import { useOrdersData } from './useOrdersData'
+
+/** 「最近一次动作」状态条的三种语气：进行中 / 一般信息 / 出错。 */
+type NoteKind = 'busy' | 'info' | 'error'
+
+/** 状态条左侧的小图标（进行中用脉冲点，错误用警示，其余用信息点）。 */
+function NoteIcon({ kind }: { kind: NoteKind }): JSX.Element {
+  if (kind === 'busy') {
+    return (
+      <span
+        className="mt-1.5 size-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+        aria-hidden="true"
+      />
+    )
+  }
+  if (kind === 'error') {
+    return (
+      <span className="mt-0.5 shrink-0 text-red-600" aria-hidden="true">
+        <IconAlert size={13} />
+      </span>
+    )
+  }
+  return (
+    <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-line-strong" aria-hidden="true" />
+  )
+}
 
 /** 台账页。 */
 export function LedgerPage(): JSX.Element {
@@ -20,18 +46,23 @@ export function LedgerPage(): JSX.Element {
   const { reload: reloadOrders } = orders
   const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null)
   const [exportNote, setExportNote] = useState('')
-  const [actionNote, setActionNote] = useState('')
+  /** 最近一次动作的提示：文字 + 语气（失败要一眼看出来，不能和普通进展长一个样）。 */
+  const [note, setNote] = useState<{ text: string; kind: NoteKind } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [readBusyGamekey, setReadBusyGamekey] = useState<string | null>(null)
+
+  const setActionNote = useCallback((text: string, kind: NoteKind = 'info') => {
+    setNote(text ? { text, kind } : null)
+  }, [])
 
   // 调试日志改成独立窗口：主进程单实例开窗，重复点只会聚焦（见 debug-window.ts）。
   const handleOpenDebug = useCallback(async () => {
     try {
       await window.api.debug.open()
     } catch (cause: unknown) {
-      setActionNote(cause instanceof Error ? cause.message : String(cause))
+      setActionNote(cause instanceof Error ? cause.message : String(cause), 'error')
     }
-  }, [])
+  }, [setActionNote])
 
   const handleExport = useCallback(
     async (format: LedgerExportFormat) => {
@@ -50,28 +81,29 @@ export function LedgerPage(): JSX.Element {
   // 只读同步：拉 Humble 订单列表增量入库（ADR-0003：接口只提供订单列表，不提供 key）。
   const handleSync = useCallback(async () => {
     setSyncing(true)
-    setActionNote('同步中…（未登录时会提示去内嵌窗口登录）')
+    setActionNote('同步中…（未登录时会提示去内嵌窗口登录）', 'busy')
     try {
       const result = await window.api.sync.run()
       setActionNote(
         result.ok
           ? `同步完成：订单 ${result.report.orderCount}（key 需逐单「读取并揭示本单 key」从页面读取）`
           : `同步失败：${result.message}`,
+        result.ok ? 'info' : 'error',
       )
     } catch (cause: unknown) {
-      setActionNote(cause instanceof Error ? cause.message : String(cause))
+      setActionNote(cause instanceof Error ? cause.message : String(cause), 'error')
     } finally {
       setSyncing(false)
       // 同步可能带来新订单（商品名 / 计数要等页面读取后才有）。
       reloadOrders()
     }
-  }, [reloadOrders])
+  }, [reloadOrders, setActionNote])
 
   // 内置任务：按订单读全部 key（提示词在主进程，渲染层只传 gamekey）。
   const handleReadOrderKeys = useCallback(
     async (order: OrderSummary) => {
       setReadBusyGamekey(order.orderRemoteId)
-      setActionNote(`读取中…（订单 ${order.orderRemoteId}；若弹出窗口请完成登录）`)
+      setActionNote(`读取中…（订单 ${order.orderRemoteId}；若弹出窗口请完成登录）`, 'busy')
       try {
         const result = await window.api.agent.readOrderKeys(order.orderRemoteId)
         const calls = result.toolCalls
@@ -81,57 +113,66 @@ export function LedgerPage(): JSX.Element {
           result.ok
             ? `读取（agent）：${result.text || '(无文本输出)'}${calls ? `｜调用：${calls}` : ''}`
             : `读取（agent）失败：${result.message}`,
+          result.ok ? 'info' : 'error',
         )
       } catch (cause: unknown) {
-        setActionNote(cause instanceof Error ? cause.message : String(cause))
+        setActionNote(cause instanceof Error ? cause.message : String(cause), 'error')
       } finally {
         setReadBusyGamekey(null)
         // key 计数 / 商品名可能刚被页面读取补齐。
         reloadOrders()
       }
     },
-    [reloadOrders],
+    [reloadOrders, setActionNote],
   )
 
   // 内置任务：揭示单条 key（不可逆）。提示词在主进程。
-  const handleReveal = useCallback(async (keyId: number) => {
-    setActionNote('揭示中…（若弹出窗口请完成登录）')
-    try {
-      const result = await window.api.agent.revealKey(keyId)
-      const calls = result.toolCalls
-        .map((call) => `${call.name}${call.ok ? '' : '(失败)'}`)
-        .join('、')
-      setActionNote(
-        result.ok
-          ? `揭示（agent）：${result.text || '(无文本输出)'}${calls ? `｜调用：${calls}` : ''}`
-          : `揭示（agent）失败：${result.message}`,
-      )
-    } catch (cause: unknown) {
-      setActionNote(cause instanceof Error ? cause.message : String(cause))
-    }
-  }, [])
+  const handleReveal = useCallback(
+    async (keyId: number) => {
+      setActionNote('揭示中…（若弹出窗口请完成登录）', 'busy')
+      try {
+        const result = await window.api.agent.revealKey(keyId)
+        const calls = result.toolCalls
+          .map((call) => `${call.name}${call.ok ? '' : '(失败)'}`)
+          .join('、')
+        setActionNote(
+          result.ok
+            ? `揭示（agent）：${result.text || '(无文本输出)'}${calls ? `｜调用：${calls}` : ''}`
+            : `揭示（agent）失败：${result.message}`,
+          result.ok ? 'info' : 'error',
+        )
+      } catch (cause: unknown) {
+        setActionNote(cause instanceof Error ? cause.message : String(cause), 'error')
+      }
+    },
+    [setActionNote],
+  )
 
   // 内置任务：兑换单条 key（代理驱动：提交由 agent 在页面上完成，工具只登记结果）。
-  const handleRedeem = useCallback(async (keyId: number) => {
-    setActionNote('兑换中…（agent 会在页面上提交，若弹出窗口请完成登录）')
-    try {
-      const result = await window.api.agent.redeemKey(keyId)
-      const calls = result.toolCalls
-        .map((call) => `${call.name}${call.ok ? '' : '(失败)'}`)
-        .join('、')
-      setActionNote(
-        result.ok
-          ? `兑换（agent）：${result.text || '(无文本输出)'}${calls ? `｜调用：${calls}` : ''}`
-          : `兑换（agent）失败：${result.message}`,
-      )
-    } catch (cause: unknown) {
-      setActionNote(cause instanceof Error ? cause.message : String(cause))
-    }
-  }, [])
+  const handleRedeem = useCallback(
+    async (keyId: number) => {
+      setActionNote('兑换中…（agent 会在页面上提交，若弹出窗口请完成登录）', 'busy')
+      try {
+        const result = await window.api.agent.redeemKey(keyId)
+        const calls = result.toolCalls
+          .map((call) => `${call.name}${call.ok ? '' : '(失败)'}`)
+          .join('、')
+        setActionNote(
+          result.ok
+            ? `兑换（agent）：${result.text || '(无文本输出)'}${calls ? `｜调用：${calls}` : ''}`
+            : `兑换（agent）失败：${result.message}`,
+          result.ok ? 'info' : 'error',
+        )
+      } catch (cause: unknown) {
+        setActionNote(cause instanceof Error ? cause.message : String(cause), 'error')
+      }
+    },
+    [setActionNote],
+  )
 
   // 首次运行引导：打开两个 store 的登录页（登录态落应用私有分区）。
   const handleLogin = useCallback(async () => {
-    setActionNote('正在打开 Humble / Epic 登录页…')
+    setActionNote('正在打开 Humble / Epic 登录页…', 'busy')
     try {
       const windows = await window.api.tasks.login()
       setActionNote(
@@ -140,9 +181,9 @@ export function LedgerPage(): JSX.Element {
           .join('、')}）。登录完成后点「同步」。`,
       )
     } catch (cause: unknown) {
-      setActionNote(cause instanceof Error ? cause.message : String(cause))
+      setActionNote(cause instanceof Error ? cause.message : String(cause), 'error')
     }
-  }, [])
+  }, [setActionNote])
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
@@ -197,6 +238,7 @@ export function LedgerPage(): JSX.Element {
             onClick={() => void handleOpenDebug()}
             className="btn btn-sm btn-ghost"
           >
+            <IconTerminal size={13} />
             调试日志…
           </button>
           <span data-testid="ledger-export-note" className="text-ink-3 text-xs tabular-nums">
@@ -205,12 +247,16 @@ export function LedgerPage(): JSX.Element {
         </div>
       </header>
 
-      {actionNote && (
+      {note && (
         <p
           data-testid="ledger-action-note"
-          className="rounded-md border border-line bg-surface px-3 py-1.5 text-ink-2 text-xs leading-relaxed"
+          data-kind={note.kind}
+          className={`status-note ${
+            note.kind === 'error' ? 'border-red-300 bg-red-50 text-red-800' : 'text-ink-2'
+          }`}
         >
-          {actionNote}
+          <NoteIcon kind={note.kind} />
+          <span className="min-w-0 break-words">{note.text}</span>
         </p>
       )}
 

@@ -12,9 +12,12 @@ import { LEDGER_ROW_HEIGHT } from './window'
 /** 行内动作：揭示（未揭示时）或兑换（已揭示未兑换时）。 */
 export type LedgerAction = 'reveal' | 'redeem'
 
-/** 明细视图的列网格：`OrderKeysPage` 的表头与这里共用，保证列对齐。 */
-export const LEDGER_GRID =
-  'grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_5rem_6rem_6.5rem_6rem] items-center gap-3'
+/** 明细视图的列网格：`OrderKeysPage` 的表头与这里共用，保证列对齐。
+ *
+ * 为什么没有「包」列：包身份就是 `<gamekey>_page`，而本视图已经限定在**一个订单**内，
+ * 实测 68 单没有一单挂两个包（多包情况为空）——那列每一行都在重复同一个值，
+ * 白占 1.6fr 宽度，把「资产」名挤到截断。要看包名去导出/详情标题。 */
+export const LEDGER_GRID = 'grid grid-cols-[minmax(0,3fr)_5rem_6rem_6.5rem_6rem] items-center gap-3'
 
 interface LedgerRowProps {
   item: LedgerListItem
@@ -82,12 +85,6 @@ export function LedgerRow({ item, busy = false, onAction }: LedgerRowProps): JSX
       <span className="truncate text-ink" title={item.name ?? item.keyRemoteId}>
         {item.name ?? item.keyRemoteId}
       </span>
-      <span
-        className={`truncate text-ink-3 ${item.bundleName ? '' : 'font-mono text-xs'}`}
-        title={item.bundleName ?? item.bundleRemoteId}
-      >
-        {item.bundleName ?? item.bundleRemoteId}
-      </span>
       <span className="text-ink-3 text-xs">{PLATFORM_LABELS[item.platform] ?? item.platform}</span>
       <span data-testid="reveal-status">
         <StatusPill tone={revealTone(item.revealStatus)}>
@@ -127,7 +124,6 @@ export function LedgerSkeletonRow({ index }: { index: number }): JSX.Element {
       style={{ height: LEDGER_ROW_HEIGHT }}
     >
       <span className="h-3 w-40 animate-pulse rounded bg-line-strong" />
-      <span className="h-3 w-28 animate-pulse rounded bg-line" />
       <span className="h-3 w-12 animate-pulse rounded bg-line" />
       <span className="h-3 w-14 animate-pulse rounded bg-line" />
       <span className="h-3 w-14 animate-pulse rounded bg-line" />

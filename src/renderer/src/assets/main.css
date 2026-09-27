@@ -161,6 +161,36 @@
   .table-head {
     @apply text-xs font-medium tracking-wide text-ink-3;
   }
+
+  /* 卡片容器：订单主视图 / 单订单明细 / 日志列表共用一套轮廓与投影。
+     原先三个文件各自写一遍 `rounded-lg border border-line bg-surface`，一致性靠人记。 */
+  .card {
+    @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-xs;
+  }
+
+  /* 表头行（.table-head 只管字，这里管容器）。 */
+  .table-head-row {
+    @apply shrink-0 border-line-strong border-b bg-surface-2 px-3 py-1.5;
+  }
+
+  /* 居中的状态块（空态 / 载入 / 错误共用一套排版）与它顶上的圆形图标底。 */
+  .state-block {
+    @apply flex h-full flex-col items-center justify-center gap-2 px-6 text-center;
+  }
+
+  .state-icon {
+    @apply flex size-9 items-center justify-center rounded-full border border-line-strong bg-surface-2 text-ink-3;
+  }
+
+  /* 「最近一次动作」状态条：图标 + 一句话（原先是一整块无层级的文字）。 */
+  .status-note {
+    @apply flex items-start gap-2 rounded-md border border-line bg-surface px-3 py-2 text-xs leading-relaxed shadow-xs;
+  }
+
+  /* 工具条里的 1px 竖分隔（分组用途：数据 / 产出 / 本机排查）。 */
+  .toolbar-sep {
+    @apply h-5 w-px bg-line-strong;
+  }
 }
 
 /* 尊重系统「减少动态效果」。 */

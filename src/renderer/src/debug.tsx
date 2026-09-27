@@ -21,7 +21,7 @@ createRoot(container).render(
       <TitleBar showMaximize={false}>
         <span className="font-medium text-ink text-xs">MonoSpace 调试日志</span>
       </TitleBar>
-      <div className="flex min-h-0 flex-1 flex-col p-3">
+      <div className="flex min-h-0 flex-1 flex-col">
         <AgentLogPanel />
       </div>
     </div>

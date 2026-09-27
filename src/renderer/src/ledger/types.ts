@@ -45,3 +45,6 @@ export type AgentLogSnapshot = Awaited<ReturnType<Window['api']['agent']['log']>
 
 /** 内置 agent 调试日志的一条记录。 */
 export type AgentLogEntry = AgentLogSnapshot['entries'][number]
+
+/** 日志类别（开始 / 结束 / 文本 / 工具）。 */
+export type AgentLogKind = AgentLogEntry['kind']

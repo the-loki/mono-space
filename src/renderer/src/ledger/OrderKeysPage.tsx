@@ -15,13 +15,6 @@ import { computeWindow, pagesForWindow, windowRowIndexes } from './window'
 /** 首帧还没量到容器高度时的兜底值。 */
 const FALLBACK_VIEWPORT_HEIGHT = 480
 
-/** 空态 / 错误态里的圆形图标底。 */
-const STATE_ICON =
-  'flex size-9 items-center justify-center rounded-full border border-line-strong bg-surface-2 text-ink-3'
-
-/** 居中的状态块（空 / 载入 / 错误共用一套排版）。 */
-const STATE_BLOCK = 'flex h-full flex-col items-center justify-center gap-2 px-6 text-center'
-
 interface OrderKeysPageProps {
   order: OrderSummary
   onBack: () => void
@@ -139,15 +132,9 @@ export function OrderKeysPage({
         </div>
       </header>
 
-      <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line
-          bg-surface"
-      >
-        <div
-          className={`${LEDGER_GRID} table-head shrink-0 border-line-strong border-b bg-surface-2 px-3 py-1.5`}
-        >
+      <div className="card">
+        <div className={`${LEDGER_GRID} table-head table-head-row`}>
           <span>资产</span>
-          <span>包</span>
           <span>平台</span>
           <span>揭示状态</span>
           <span>兑换状态</span>
@@ -161,8 +148,8 @@ export function OrderKeysPage({
           className="min-h-0 flex-1 overflow-y-auto"
         >
           {data.status === 'error' && (
-            <div data-testid="ledger-error" className={STATE_BLOCK}>
-              <span className={STATE_ICON}>
+            <div data-testid="ledger-error" className="state-block">
+              <span className="state-icon">
                 <IconAlert size={16} />
               </span>
               <p className="font-medium text-ink text-sm">台账读取失败</p>
@@ -181,8 +168,8 @@ export function OrderKeysPage({
           )}
 
           {isEmpty && (
-            <div data-testid="ledger-empty" className={STATE_BLOCK}>
-              <span className={STATE_ICON}>
+            <div data-testid="ledger-empty" className="state-block">
+              <span className="state-icon">
                 <IconKey size={16} />
               </span>
               {/* 区分「这一单真的没有 key」与「当前筛选下没有」——后者说「还没读到 key」是误导。 */}
