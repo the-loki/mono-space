@@ -179,6 +179,20 @@ describe('createAgentLogBuffer：事件合并与环形裁剪', () => {
     expect(buffer.snapshot()[0].detail).toBe('原始')
   })
 
+  it('新一轮 runStart 丢掉上一轮的记录（一次任务 = 一个新会话，面板只看当前任务）', () => {
+    const buffer = createAgentLogBuffer()
+    buffer.runStart('第一次：读取订单 A')
+    buffer.pushTextDelta('上一轮的输出')
+    buffer.toolStart({ callId: 'c1', tool: 'monospace_dom', args: {} })
+    buffer.runEnd({ ok: true, detail: '上一轮结束' })
+    expect(buffer.size()).toBeGreaterThan(1)
+
+    buffer.runStart('第二次：读取订单 B')
+    // 只剩这一轮的入口：上一轮的文本 / 工具 / 结束记录全不见了。
+    expect(buffer.snapshot().map((entry) => entry.kind)).toEqual(['run_start'])
+    expect(buffer.snapshot()[0].detail).toBe('第二次：读取订单 B')
+  })
+
   it('clear 清空全部记录', () => {
     const buffer = createAgentLogBuffer()
     buffer.runStart('p')

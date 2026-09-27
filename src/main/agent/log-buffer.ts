@@ -147,6 +147,12 @@ export function createAgentLogBuffer(capacity: number = AGENT_LOG_CAPACITY): Age
 
   return {
     runStart(prompt) {
+      // 一次任务 = **一个全新的会话**：上一轮的记录不属于这一轮，直接丢掉。
+      //
+      // 会话本身每次调用都是新建、用完即 `dispose`（见 `ipc/agent.ts`，那里没有跨调用缓存）；
+      // 但日志缓冲是**跨任务存活**的 500 条环形缓冲，不清就会在面板上把几十轮混在一起 ——
+      // 于是“新会话”看似没生效（用户实测反馈：点开调试日志还能看到以前的）。
+      entries = []
       closeText()
       running = true
       push({ kind: 'run_start', detail: truncate(prompt, AGENT_LOG_SUMMARY_LIMIT), failed: false })
