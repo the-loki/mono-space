@@ -1,9 +1,9 @@
 /**
  * 少量内联 SVG 图标（装饰性）。
  *
- * 为什么不装图标库：任务约束不允许加依赖，而这里只需要 4 个图标——一个库的体积和
- * 维护成本远超手写几条 path。全部 `aria-hidden`，因为它们旁边始终有中文文字标签，
- * 不需要再给屏幕阅读器加噪音。
+ * 为什么不装图标库：任务约束不允许加依赖，而这里只需要几个图标——一个库的体积和
+ * 维护成本远超手写几条 path。全部 `aria-hidden`，因为它们旁边始终有中文文字标签
+ * （窗口控制按钮则由按钮自己的 aria-label 承载含义），不需要再给屏幕阅读器加噪音。
  */
 import type { JSX } from 'react'
 
@@ -137,6 +137,87 @@ export function IconArrowLeft({ size = 14, className }: IconProps): JSX.Element 
       className={className}
     >
       <path d="M15 5 8 12l7 7" />
+    </svg>
+  )
+}
+
+// —————————————— 自建标题栏的窗口控制（无边框窗口，见 ui/TitleBar.tsx） ——————————————
+// 这三个图标全部描边、无填色（`currentColor`），所以浅色/悬停态都不用另调颜色。
+
+/** 最小化：一条横线。 */
+export function IconMinimize({ size = 14, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
+
+/** 最大化：单层方框。 */
+export function IconMaximize({ size = 14, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <rect x="5" y="5" width="14" height="14" rx="1.5" />
+    </svg>
+  )
+}
+
+/** 还原：两层错位方框（与最大化图标成对，表示「再点会缩回去」）。 */
+export function IconRestore({ size = 14, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <rect x="4.5" y="8.5" width="11" height="11" rx="1.5" />
+      <path d="M8.5 8.5V6A1.5 1.5 0 0 1 10 4.5h8A1.5 1.5 0 0 1 19.5 6v8a1.5 1.5 0 0 1-1.5 1.5h-2.5" />
+    </svg>
+  )
+}
+
+/** 关闭：叉。 */
+export function IconClose({ size = 14, className }: IconProps): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="m6 6 12 12" />
+      <path d="m18 6-12 12" />
     </svg>
   )
 }

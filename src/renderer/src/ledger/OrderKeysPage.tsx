@@ -129,7 +129,7 @@ export function OrderKeysPage({
               }}
               className={`h-7 rounded px-2.5 text-sm transition-colors ${
                 filter === value
-                  ? 'bg-slate-700 font-medium text-ink'
+                  ? 'bg-slate-700 font-medium text-white'
                   : 'text-ink-3 hover:bg-surface-hover hover:text-ink'
               }`}
             >

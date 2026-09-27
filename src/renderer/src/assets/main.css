@@ -3,16 +3,29 @@
 /*
  * 设计 token（Tailwind v4 @theme → 自动生成 bg-* / text-* / border-* 工具类）。
  *
- * 方向：本机深色数据工具（68 单 / 1000+ key 为主场景，长时间挂着看）。
- * 配色取自 ui-ux-pro-max 的「深色高对比」配对（bg #020617 / fg #F8FAFC /
- * border #334155 / ring 亮色），层级按 slate 梯度收窄，避免 30 种近似灰。
+ * 方向：本机 **浅色** 数据工具（68 单 / 1000+ key，长时间挂着看，数据密集列表）。
+ * 配色取自 ui-ux-pro-max 的 `--design-system`（query: "desktop data tool light dense"）：
+ * 命中的 Style 是 **Data-Dense Dashboard**（mode: Light supported），
+ * 命中的 Color 是 **Analytics Dashboard**（`--domain color` 的第 2 条）：
+ *   primary #1E40AF / on-primary #FFFFFF / background #F8FAFC / card #FFFFFF /
+ *   muted #E9EEF6 / muted-foreground #475569 / border #DBEAFE / ring #1E40AF
+ * 采用它的「浅底 + 中性面 + 蓝色强调」骨架；两处按本产品收窄：
+ *   · 描边改用中性 slate 梯度（#E2E8F0 / #CBD5E1），不用 skill 的蓝色描边
+ *     —— 蓝色描边和数据密集表格的行分隔线混在一起会显得发蓝、干扰阅读优先级；
+ *   · 主色用 skill 的 #1E40AF（它同时建议的 ring 也是这个蓝）。
+ * 丢弃的部分：`--design-system` 同时给出的 "Enterprise Gateway" 落地页 pattern、
+ * Fira Code/Fira Sans 外部字体（CSP `default-src 'self'` 会拦，且本任务不许加依赖）
+ * 以及所有深色/kiosk 类结果 —— 与「浅色本机数据工具」无关。
  *
- * 对比度实测（相对 canvas #020617，正文要求 ≥4.5:1）：
- *   ink 18.4 · ink-2 13.6 · ink-3 7.87 · accent-soft 12.1
- * 旧的 slate-500 只有 4.24:1（未达标），已从正文/元信息角色里移除。
+ * 对比度**实测**（公式：WCAG 相对亮度，见回报；正文/次要文字要求 ≥4.5:1）：
+ *   ink  #0F172A / canvas #F8FAFC = 17.06:1 · / surface #FFFFFF = 17.85:1 · / surface-2 = 16.30:1
+ *   ink-2 #334155              =  9.90:1 · 10.35:1 · 9.45:1
+ *   ink-3 #475569              =  7.24:1 ·  7.58:1 · 6.92:1   （次要文字，仍 >4.5:1）
+ *   主按钮白字 / accent #1E40AF = 8.72:1 · hover #1D4ED8 = 6.70:1 · active #1E3A8A = 10.36:1
+ *   焦点环 #1D4ED8 / canvas = 6.41:1 · / surface = 6.70:1 · / surface-2 = 6.12:1（非文本要求 ≥3:1）
+ *   状态徽章 前景/背景 = 6.84–9.45:1（见下方各 badge）
  *
- * 字体只用系统栈：index.html 的 CSP 是 `default-src 'self'`，外部字体（Google Fonts）
- * 会被拦，且本任务不允许加依赖，所以 ui-ux-pro-max 推荐的 Fira Code/Fira Sans 不适用。
+ * 字体只用系统栈：index.html 的 CSP 是 `default-src 'self'`，外部字体会被拦，且不许加依赖。
  */
 @theme {
   --font-sans:
@@ -22,39 +35,38 @@
     ui-monospace, "SFMono-Regular", "JetBrains Mono", "Cascadia Mono", Consolas, "Liberation Mono",
     monospace;
 
-  /* 表面层级：canvas（窗口底）< surface（列表/面板）< surface-2（表头/工具条） */
-  --color-canvas: #020617;
-  --color-surface: #0b1220;
-  --color-surface-2: #131c2e;
-  --color-surface-hover: #1c2740;
+  /* 表面层级：canvas（窗口底）< surface（列表/面板）< surface-2（表头/工具条）< hover */
+  --color-canvas: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;
+  --color-surface-hover: #e2e8f0;
 
   /* 描边：line 做行分隔（刻意轻），line-strong 做容器轮廓与表头下沿 */
-  --color-line: #1e293b;
-  --color-line-strong: #334155;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
 
-  /* 文本层级 */
-  --color-ink: #f1f5f9;
-  --color-ink-2: #cbd5e1;
-  --color-ink-3: #94a3b8;
+  /* 文本层级（旧的 #94a3b8 在浅底上只有 2.4:1，已从正文/元信息角色里移除） */
+  --color-ink: #0f172a;
+  --color-ink-2: #334155;
+  --color-ink-3: #475569;
 
-  /* 强调色：亮底 + 深字（深色主题下比「深底白字」更容易过 4.5:1） */
-  --color-accent: #38bdf8;
-  --color-accent-hover: #7dd3fc;
-  --color-accent-strong: #0ea5e9;
-  --color-accent-ink: #020617;
+  /* 强调色：深蓝底 + 白字（浅色主题下这是唯一能稳过 4.5:1 的强调组合） */
+  --color-accent: #1e40af;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-strong: #1e3a8a;
+  --color-accent-ink: #ffffff;
 
-  /* 焦点环：对所有表面都 ≥8:1（非文本要求 ≥3:1） */
-  --color-focus: #7dd3fc;
+  /* 焦点环：对所有浅色表面都 ≥6:1（非文本要求 ≥3:1） */
+  --color-focus: #1d4ed8;
 }
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   /* 关键：全局统一的可见焦点环，任何控件都不会「去掉 outline 就没了」。
-     刻意往外画（offset 2px）：这样不管控件本身是亮底还是暗底，环都落在深色 canvas 上
-     （12:1），不会像 inset 那样在亮色主按钮上糊成一片。 */
+     刻意往外画（offset 2px）：环落在外层浅色画布上，不会贴着控件本身的底色糊成一片。 */
   :focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
@@ -69,9 +81,19 @@
 }
 
 @layer components {
+  /* 无边框窗口（`frame: false`）自建标题栏：整条可拖动。
+     拖动区域会吞掉鼠标事件，所以里面的按钮等交互元素必须 `.app-no-drag`，否则点不动。 */
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+
   /* 按钮：主 / 次 / 幽灵 / 安静强调 四档，四态（悬停 / 激活 / 焦点 / 禁用）统一在此。 */
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-sm {
@@ -86,8 +108,9 @@
     @apply bg-accent text-accent-ink hover:bg-accent-hover active:bg-accent-strong;
   }
 
+  /* 次要按钮靠「描边 + 极轻投影」立起来（浅色主题的常规做法，单靠底色与白底分不开）。 */
   .btn-secondary {
-    @apply border border-line-strong bg-surface-2 text-ink-2 hover:border-slate-600 hover:bg-surface-hover hover:text-ink;
+    @apply border border-line-strong bg-surface text-ink-2 shadow-sm hover:border-slate-400 hover:bg-surface-hover hover:text-ink;
   }
 
   .btn-ghost {
@@ -96,40 +119,42 @@
 
   /* 行内动作：默认低调（68 行不抢戏），悬停/聚焦才亮起来。 */
   .btn-accent-quiet {
-    @apply border border-sky-800 text-sky-300 hover:border-sky-500 hover:bg-sky-950 hover:text-sky-200;
+    @apply border border-sky-300 text-sky-700 hover:border-sky-500 hover:bg-sky-50 hover:text-sky-800;
   }
 
-  /* 状态胶囊：文字 + 语义色（颜色只是辅助，含义始终由中文标签承载）。 */
+  /* 状态胶囊：文字 + 语义色（颜色只是辅助，含义始终由中文标签承载）。
+     前景/背景实测：done 6.78 · pending 6.37 · todo 6.59 · progress 7.57 ·
+     muted 9.45 · warn 6.38 · danger 6.80（全部 ≥4.5:1）。 */
   .badge {
     @apply inline-flex items-center whitespace-nowrap rounded border px-1.5 text-[11px] font-medium leading-4;
   }
 
   .badge-done {
-    @apply border-emerald-800 bg-emerald-950 text-emerald-300;
+    @apply border-emerald-300 bg-emerald-100 text-emerald-800;
   }
 
   .badge-pending {
-    @apply border-amber-800 bg-amber-950 text-amber-200;
+    @apply border-amber-300 bg-amber-100 text-amber-800;
   }
 
   .badge-todo {
-    @apply border-sky-800 bg-sky-950 text-sky-200;
+    @apply border-sky-300 bg-sky-100 text-sky-800;
   }
 
   .badge-progress {
-    @apply border-violet-800 bg-violet-950 text-violet-200;
+    @apply border-violet-300 bg-violet-100 text-violet-800;
   }
 
   .badge-muted {
-    @apply border-slate-700 bg-slate-800 text-slate-300;
+    @apply border-slate-300 bg-slate-100 text-slate-700;
   }
 
   .badge-warn {
-    @apply border-orange-800 bg-orange-950 text-orange-200;
+    @apply border-orange-300 bg-orange-100 text-orange-800;
   }
 
   .badge-danger {
-    @apply border-red-800 bg-red-950 text-red-300;
+    @apply border-red-300 bg-red-100 text-red-800;
   }
 
   /* 表头：与主视图 / 明细视图共用，保证两处列样式一致。 */

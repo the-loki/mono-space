@@ -88,7 +88,7 @@ export function AgentLogPanel(): JSX.Element {
           agent 调试日志
           <span
             data-testid="ledger-agent-log-count"
-            className="rounded bg-slate-800 px-1.5 text-[11px] text-ink-3 tabular-nums"
+            className="rounded bg-slate-200 px-1.5 text-[11px] text-slate-600 tabular-nums"
           >
             {entries.length}
           </span>
@@ -97,10 +97,10 @@ export function AgentLogPanel(): JSX.Element {
         {running && (
           <span
             data-testid="ledger-agent-log-running"
-            className="flex items-center gap-1.5 text-emerald-300 text-xs"
+            className="flex items-center gap-1.5 text-emerald-700 text-xs"
           >
             <span
-              className="size-1.5 animate-pulse rounded-full bg-emerald-400"
+              className="size-1.5 animate-pulse rounded-full bg-emerald-500"
               aria-hidden="true"
             />
             运行中…
@@ -135,7 +135,7 @@ export function AgentLogPanel(): JSX.Element {
           className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
         >
           {error && (
-            <p data-testid="ledger-agent-log-error" className="text-red-300 text-xs">
+            <p data-testid="ledger-agent-log-error" className="text-red-700 text-xs">
               日志读取失败：{error}
             </p>
           )}
@@ -167,13 +167,13 @@ export function AgentLogPanel(): JSX.Element {
                 data-kind={entry.kind}
                 data-failed={entry.failed}
                 className={`border-line border-l-2 py-1 pl-2.5 ${
-                  entry.failed ? 'border-l-red-800 text-red-300' : 'text-ink-2'
+                  entry.failed ? 'border-l-red-500 text-red-700' : 'text-ink-2'
                 }`}
               >
                 <span className="text-ink-3">{shortTime(entry.at)}</span>{' '}
                 <span className="text-ink-3">{KIND_LABELS[entry.kind]}</span>
-                {entry.tool && <span className="ml-1 text-indigo-300">{entry.tool}</span>}
-                {entry.failed && <span className="ml-1 text-red-400">失败</span>}
+                {entry.tool && <span className="ml-1 text-indigo-700">{entry.tool}</span>}
+                {entry.failed && <span className="ml-1 text-red-600">失败</span>}
                 {entry.detail && <div className="break-all text-ink-3">{entry.detail}</div>}
                 {entry.result !== undefined && (
                   <div className="break-all text-ink-3">→ {entry.result}</div>

@@ -8,6 +8,7 @@ import { registerDebugIpc } from './ipc/debug'
 import { registerLedgerIpc } from './ipc/ledger'
 import { registerSyncIpc } from './ipc/sync'
 import { registerTaskIpc } from './ipc/tasks'
+import { registerWindowControlIpc } from './window-controls'
 
 // 主进程是 ESM（package.json "type":"module"），没有 __dirname，需自行推导。
 const currentDir = dirname(fileURLToPath(import.meta.url))
@@ -18,6 +19,9 @@ function createWindow(): BrowserWindow {
     height: 720,
     show: false,
     title: 'MonoSpace',
+    // 无边框（用户决策：不要系统 title bar）。Linux 不支持 macOS/Windows 的 titleBarStyle 那套，
+    // 只能 frame: false；标题栏改由渲染层自建（见 src/renderer/src/ui/TitleBar.tsx）。
+    frame: false,
     webPreferences: {
       // preload 产物是 .cjs（见 electron.vite.config.ts），在 sandbox 下加载。
       preload: join(currentDir, '../preload/index.cjs'),
@@ -72,6 +76,10 @@ app.whenReady().then(() => {
 
   // 调试面板独立窗口（用户决策）：`debug:open` 幂等开窗 / 聚焦（见 debug-window.ts）。
   registerDebugIpc()
+
+  // 无边框窗口的控制通道（最小化 / 最大化 / 关闭 + 状态广播，见 window-controls.ts）。
+  // 必须在任何 BrowserWindow **创建之前**注册：状态广播挂在 app 的 browser-window-created 上。
+  registerWindowControlIpc()
 
   createWindow()
 

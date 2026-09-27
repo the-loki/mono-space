@@ -34,6 +34,9 @@ export function openDebugWindow(): BrowserWindow {
     minHeight: 320,
     show: false,
     title: 'MonoSpace 调试日志',
+    // 与主窗口一致的风格：也无边框，标题栏由渲染层自建（见 ui/TitleBar.tsx）。
+    // 工具窗不需要最大化按钮，用同一个 TitleBar 的 showMaximize={false} 即可。
+    frame: false,
     webPreferences: {
       preload: join(currentDir, '../preload/index.cjs'),
       sandbox: true,

@@ -210,6 +210,27 @@ export interface LoginWindowResult {
  */
 export interface MonoSpaceApi {
   ping(message: string): Promise<string>
+  /**
+   * 窗口控制：无边框窗口（`frame: false`）自建标题栏用。
+   *
+   * 全部操作**发出请求的那个窗口**（主进程用 `BrowserWindow.fromWebContents(event.sender)`），
+   * 因为调试窗口与主窗口共用同一套 preload/通道，写死主窗口会让调试窗口的关闭按钮关错窗口。
+   */
+  window: {
+    /** 最小化当前窗口。 */
+    minimize(): Promise<void>
+    /** 最大化 / 还原当前窗口，返回操作后的最大化状态。 */
+    toggleMaximize(): Promise<boolean>
+    /** 关闭当前窗口。 */
+    close(): Promise<void>
+    /** 当前是否最大化（首帧同步按钮图标用）。 */
+    isMaximized(): Promise<boolean>
+    /**
+     * 订阅最大化状态变化（WM 直接最大化 / 双击 / 快捷键也能同步图标）。
+     * 返回取消订阅函数。
+     */
+    onMaximizedChange(listener: (maximized: boolean) => void): () => void
+  }
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
   ledger: {
     list(query?: KeyQuery): Promise<KeyPage>

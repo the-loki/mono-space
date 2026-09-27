@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron'
 import type { KeyPage, KeyQuery, OrderSummary } from '../main/data/types'
 import type { AgentRunResult, AgentStatus } from '../main/ipc/agent'
 import type { LedgerExportFormat } from '../main/ipc/ledger'
@@ -8,6 +8,22 @@ import type { AgentLogSnapshot, MonoSpaceApi } from '../shared/ipc-contract'
 
 const api: MonoSpaceApi = {
   ping: (message: string): Promise<string> => ipcRenderer.invoke('ping', message),
+  /** 窗口控制：无边框窗口的自建标题栏用（见 shared/ipc-contract.ts 的类型说明）。 */
+  window: {
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggle-maximize'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),
+    /**
+     * `ipcRenderer` 本身不能跨 contextBridge，所以在 preload 里包一层：
+     * 渲染层只拿到一个 `(maximized) => void` 回调，并拿到取消订阅函数。
+     */
+    onMaximizedChange: (listener: (maximized: boolean) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, maximized: boolean): void => listener(maximized)
+      ipcRenderer.on('window:maximized-changed', handler)
+      return () => ipcRenderer.removeListener('window:maximized-changed', handler)
+    },
+  },
   /** 台账：窄接口，只返回列表字段（无兑换码明文）。 */
   ledger: {
     list: (query: KeyQuery = {}): Promise<KeyPage> => ipcRenderer.invoke('ledger:list', query),
