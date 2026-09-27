@@ -172,7 +172,14 @@ interface LedgerExportOwnerFields {
  */
 type LedgerKeyFieldName = Exclude<
   keyof KeyDetail,
-  keyof LedgerExportOwnerFields | 'id' | 'orderId' | 'bundleId'
+  | keyof LedgerExportOwnerFields
+  | 'id'
+  | 'orderId'
+  | 'bundleId'
+  // 同单同名带码行数：**派生的界面提示**，不是台账数据 —— 不进导出（导出是给外部工具读台账内容，
+  // 把「界面该怎么提示」也塞进去没道理）。显式排除，好让「列表加了字段就逼导出加列」的
+  // `satisfies` 闸门不被它触发。
+  | 'sameNameCodeCount'
 >
 
 // 说明：无码缘由原先被显式排除在导出外，理由是「导出没有出口」（docs/verify/33-full-test.md §0）。

@@ -5,8 +5,17 @@ directories:
 files:
   - out/**
   - package.json
+# 图标：打包时用 build/icon.png（Linux 需要 ≥512×512），运行时的窗口图标也从这里取
+# （extraResources 把它放到 resources/icon.png，见 src/main/index.ts 的 appIconPath）。
+# 产图脚本：scripts/make-icon.py（可复现，不是随手塞的二进制）。
+extraResources:
+  # 显式写 to：不写的话 electron-builder 会保留 `build/` 前缀、落到 resources/build/icon.png，
+  # 与代码里读的 resources/icon.png 对不上（我第一版就是这么错的，打包后查产物才发现）。
+  - from: build/icon.png
+    to: icon.png
 linux:
   target:
     - AppImage
+  icon: build/icon.png
   category: Utility
   syncDesktopName: true

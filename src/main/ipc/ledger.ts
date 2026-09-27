@@ -68,6 +68,7 @@ export function toKeyListItem(item: KeyListItem): KeyListItem {
     revealedAt: item.revealedAt,
     redeemStatus: item.redeemStatus,
     redeemedAt: item.redeemedAt,
+    sameNameCodeCount: item.sameNameCodeCount,
   }
 }
 

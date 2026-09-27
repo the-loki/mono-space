@@ -102,8 +102,23 @@ export function LedgerRow({ item, busy = false, onAction }: LedgerRowProps): JSX
         hover:bg-surface-hover`}
       style={{ height: LEDGER_ROW_HEIGHT }}
     >
-      <span className="truncate text-ink" title={item.name ?? item.keyRemoteId}>
-        {item.name ?? item.keyRemoteId}
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate text-ink" title={item.name ?? item.keyRemoteId}>
+          {item.name ?? item.keyRemoteId}
+        </span>
+        {/* 同单同名带码提示：**只在**本行无码时才会有计数（SQL 侧的 CASE），所以不必再判一次。
+            它只是提示，不合并任何数据（连接键只能是兑换码，ADR-0004/0005）——
+            页面这行标「未揭示」不代表台账里没这个资产的码（docs/verify/34：46 条里 27 条如此）。 */}
+        {item.sameNameCodeCount > 0 && (
+          <span
+            data-testid="key-same-name-code"
+            data-count={item.sameNameCodeCount}
+            title={`同一订单里另有 ${item.sameNameCodeCount} 行**同名且已有兑换码**。页面这一行没码不代表台账里没这个资产的码，不必为它重跑揭示（只提示，不合并）。`}
+            className="badge badge-muted shrink-0"
+          >
+            同名行带码 ×{item.sameNameCodeCount}
+          </span>
+        )}
       </span>
       <span className="text-ink-3 text-xs">{PLATFORM_LABELS[item.platform] ?? item.platform}</span>
       <span data-testid="reveal-status">

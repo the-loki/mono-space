@@ -78,7 +78,20 @@ const KEY_LIST_COLUMNS = `
   k.reveal_status AS reveal_status,
   k.revealed_at AS revealed_at,
   k.redeem_status AS redeem_status,
-  k.redeemed_at AS redeemed_at
+  k.redeemed_at AS redeemed_at,
+  -- 同单同名且已有码的**其它**行条数（只在本行无码时统计）。
+  -- 用途见 docs/verify/34：页面行标「未揭示」不等于台账里没这个资产的码 —— 真实库 46 条未揭示里
+  -- 有 27 条，同单另有一条同名「接口补充行」持有码。只给界面一句提示，**不合并数据**（ADR-0004）。
+  -- 名字为 NULL 时不匹配（SQL 三值逻辑）= 没名字就没有「同名」可言，正是想要的行为。
+  CASE WHEN k.redeem_code IS NULL THEN (
+    SELECT COUNT(*)
+      FROM keys k2
+      JOIN engine_asset_bundles b2 ON b2.id = k2.bundle_id
+     WHERE b2.order_id = b.order_id
+       AND k2.name = k.name
+       AND k2.redeem_code IS NOT NULL
+       AND k2.id <> k.id
+  ) ELSE 0 END AS same_name_code_count
 `
 
 /** 详情 / 导出列（含兑换码明文，按需读取）。 */
@@ -729,6 +742,7 @@ function mapKeyListItem(row: Record<string, SQLOutputValue>): KeyListItem {
     revealedAt: text(row.revealed_at),
     redeemStatus: (text(row.redeem_status) ?? 'not_redeemed') as RedeemStatus,
     redeemedAt: text(row.redeemed_at),
+    sameNameCodeCount: Number(row.same_name_code_count ?? 0),
   }
 }
 

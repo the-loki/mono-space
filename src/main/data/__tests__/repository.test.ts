@@ -576,3 +576,112 @@ describe('无码缘由 no_code_reason（逐行、可空；由 agent 给出）', 
     repo.close()
   })
 })
+
+/**
+ * `sameNameCodeCount`：**同单**里同名且**已有码**的其它行条数（只在**本行无码**时统计）。
+ *
+ * 为什么要这个东西（`docs/verify/34` 的实证）：页面行标「未揭示」不等于台账里没这个资产的码 ——
+ * 真实库 46 条未揭示里有 27 条，同单另有一条同名「接口补充行」持有码。用户看到「未揭示」会以为
+ * 还得去点一次揭示，其实是白跑。所以给界面一句提示用。
+ *
+ * **它只是提示**：不合并、不搬码、不改任何行（连接键只能是兑换码，ADR-0004）。
+ */
+describe('同单同名带码行提示 sameNameCodeCount（只提示，不动数据）', () => {
+  /** 一个订单里放多条 key，便于构造「同名带码」场景。 */
+  function orderWithKeys(keys: SyncedKey[], orderRemoteId = 'order-same'): SyncedOrder {
+    return {
+      remoteId: orderRemoteId,
+      bundles: [{ remoteId: `${orderRemoteId}_page`, name: '包', keys }],
+    }
+  }
+  const noCode = (remoteId: string, name: string): SyncedKey => ({
+    remoteId,
+    name,
+    revealStatus: 'unrevealed',
+    noCodeReason: 'link_only',
+  })
+  const withCode = (remoteId: string, name: string, code: string): SyncedKey => ({
+    remoteId,
+    name,
+    revealStatus: 'revealed',
+    redeemCode: code,
+  })
+  // 按 **keyRemoteId** 归类，不能按 name —— 同名两条会互相覆盖（我第一版就是这么错的：
+  // 断言看到 0 其实是「带码那条的计数本来就是 0」，不是实现错）。
+  const counts = (repo: ReturnType<typeof openLedger>): Record<string, number> =>
+    Object.fromEntries(
+      repo.listKeys().items.map((item) => [item.keyRemoteId, item.sameNameCodeCount]),
+    )
+
+  it('本行无码 + 同单有同名带码行 ⇒ 计数 1', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithKeys([noCode('k1', '素材 A'), withCode('k2', '素材 A', 'CODE-A')]),
+    ])
+    // 无码那条（k1）计数 1；带码那条（k2）计数 0 —— 两条都要断言，避免只看一条。
+    expect(counts(repo)).toEqual({ k1: 1, k2: 0 })
+    repo.close()
+  })
+
+  it('同单有多条同名带码行 ⇒ 计数 2（界面要说「另有 2 行」）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithKeys([
+        noCode('k1', '素材 A'),
+        withCode('k2', '素材 A', 'CODE-A'),
+        withCode('k3', '素材 A', 'CODE-B'),
+      ]),
+    ])
+    expect(counts(repo).k1).toBe(2)
+    repo.close()
+  })
+
+  it('**本行已有码 ⇒ 计数 0**（提示对它没有意义，别噪声）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithKeys([withCode('k1', '素材 A', 'CODE-A'), withCode('k2', '素材 A', 'CODE-B')]),
+    ])
+    expect(counts(repo).k1).toBe(0)
+    repo.close()
+  })
+
+  it('同名但在**别的订单**里 ⇒ 计数 0（必须同单，跨单同名不算）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithKeys([noCode('k1', '素材 A')], 'order-one'),
+      orderWithKeys([withCode('k2', '素材 A', 'CODE-A')], 'order-two'),
+    ])
+    expect(counts(repo).k1).toBe(0)
+    repo.close()
+  })
+
+  it('同名但对方也没码 ⇒ 计数 0', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([orderWithKeys([noCode('k1', '素材 A'), noCode('k2', '素材 A')])])
+    expect(counts(repo).k1).toBe(0)
+    repo.close()
+  })
+
+  it('名字为空 ⇒ 计数 0（没有名字就没有「同名」可言，不能把无名行互相算上）', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithKeys([
+        { remoteId: 'k1', name: null, revealStatus: 'unrevealed' },
+        { remoteId: 'k2', name: null, revealStatus: 'revealed', redeemCode: 'CODE-A' },
+      ]),
+    ])
+    expect(repo.listKeys().items.every((item) => item.sameNameCodeCount === 0)).toBe(true)
+    repo.close()
+  })
+
+  it('详情（getKey）也带这个计数 —— 明细页与列表页用的是同一套投影', () => {
+    const repo = openLedger({ path: ':memory:' })
+    repo.applyOrderSync([
+      orderWithKeys([noCode('k1', '素材 A'), withCode('k2', '素材 A', 'CODE-A')]),
+    ])
+    const noCodeItem = repo.listKeys().items.find((item) => item.keyRemoteId === 'k1')
+    expect(noCodeItem?.sameNameCodeCount).toBe(1)
+    expect(repo.getKey(noCodeItem?.id as number)?.sameNameCodeCount).toBe(1)
+    repo.close()
+  })
+})

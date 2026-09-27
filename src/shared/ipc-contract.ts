@@ -81,6 +81,14 @@ export interface KeyListItem {
   revealedAt: string | null
   redeemStatus: RedeemStatus
   redeemedAt: string | null
+  /**
+   * **同单**里同名且已有码的其它行条数（只在本行无码时统计，否则 0）。
+   *
+   * 只是界面提示：页面行标「未揭示」不代表台账里没这个资产的码（`docs/verify/34` 实测
+   * 46 条未揭示里 27 条的同单同名补充行持有码）。**它不参与合并**（连接键只能是兑换码，ADR-0004），
+   * 也不进导出（派生提示、不是台账数据）。
+   */
+  sameNameCodeCount: number
 }
 
 /** 列表查询条件。 */

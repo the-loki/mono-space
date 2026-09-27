@@ -13,12 +13,28 @@ import { registerWindowControlIpc } from './window-controls'
 // 主进程是 ESM（package.json "type":"module"），没有 __dirname，需自行推导。
 const currentDir = dirname(fileURLToPath(import.meta.url))
 
+/**
+ * 应用图标路径。
+ *
+ * 两条路径的原因：dev 下应用目录就是仓库（`out/main` 往上两级）；打包后 `build/` 不在 asar 里，
+ * 而是在 `resources/`（见 electron-builder.yml 的 extraResources）。
+ * 不设这个图标时打包日志会写 `default Electron icon is used reason=application icon is not set`
+ * （`docs/verify/33` §0 记过的缺口）。产图脚本：`scripts/make-icon.py`。
+ */
+function appIconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'icon.png')
+    : join(currentDir, '../../build/icon.png')
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
     height: 720,
     show: false,
     title: 'MonoSpace',
+    // 窗口/任务栏图标。dev 从仓库读；打包后读 `resources/icon.png`（electron-builder 的 extraResources）。
+    icon: appIconPath(),
     // 无边框（用户决策：不要系统 title bar）。Linux 不支持 macOS/Windows 的 titleBarStyle 那套，
     // 只能 frame: false；标题栏改由渲染层自建（见 src/renderer/src/ui/TitleBar.tsx）。
     frame: false,

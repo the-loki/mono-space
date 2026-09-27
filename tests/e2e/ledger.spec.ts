@@ -400,3 +400,77 @@ test('导出 JSON / CSV：真的落盘到指定目录，且文件内容正确（
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+/**
+ * 同单同名带码提示：页面行标「未揭示」不代表台账里没这个资产的码。
+ * 真实库 46 条未揭示里 27 条的同单同名补充行持有码（`docs/verify/34`），
+ * 用户看到「未揭示」会白跑一次揭示 —— 所以给一句提示，**但不合并数据**（连接键只能是兑换码）。
+ */
+test('同单同名带码：无码行出提示、计数正确；没有同名带码行则不出提示', async () => {
+  const { dir, dbPath } = tempLedger()
+  const repo = openLedger({ path: dbPath })
+  repo.applyOrderSync([
+    {
+      remoteId: 'order-same-name',
+      productName: '同名提示订单',
+      bundles: [
+        {
+          remoteId: 'order-same-name_page',
+          name: '包',
+          keys: [
+            // ① 无码页行 + ② 同单同名带码行（接口补充行）⇒ ① 应出「同名行带码 ×1」
+            {
+              remoteId: 'k-nocode',
+              name: '素材 A',
+              revealStatus: 'unrevealed',
+              noCodeReason: 'link_only',
+            },
+            {
+              remoteId: 'api:supp',
+              name: '素材 A',
+              revealStatus: 'revealed',
+              redeemStatus: 'not_redeemed',
+              redeemCode: 'SAME-NAME-CODE',
+            },
+            // ③ 无码但没有同名带码行 ⇒ 不应出提示
+            {
+              remoteId: 'k-lonely',
+              name: '素材 B',
+              revealStatus: 'unrevealed',
+              noCodeReason: 'expired',
+            },
+          ],
+        },
+      ],
+    },
+  ])
+  repo.close()
+
+  const app = await launchApp(dbPath)
+  try {
+    const page = await app.firstWindow()
+    await page.locator('[data-testid="order-open-detail"]').first().click()
+
+    const rows = page.locator('[data-testid="ledger-row"]')
+    await expect(rows).toHaveCount(3)
+
+    const badge = page.locator('[data-testid="key-same-name-code"]')
+    await expect(badge).toHaveCount(1)
+    await expect(badge).toHaveText('同名行带码 ×1')
+    await expect(badge).toHaveAttribute('data-count', '1')
+    await expect(badge).toHaveAttribute('title', /同名且已有兑换码/)
+
+    // 它挂在「素材 A」的无码行上，不在「素材 B」那行。
+    const owner = rows.filter({ has: page.locator('[data-testid="key-same-name-code"]') })
+    await expect(owner).toHaveCount(1)
+    await expect(owner.first()).toContainText('素材 A')
+    const lonely = rows.filter({ hasText: '素材 B' })
+    await expect(lonely.locator('[data-testid="key-same-name-code"]')).toHaveCount(0)
+
+    // 提示只是提示：**列表里依旧没有兑换码明文**（SAME-NAME-CODE 只在库里）。
+    expect(await page.content()).not.toContain('SAME-NAME-CODE')
+  } finally {
+    await app.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

@@ -133,8 +133,14 @@ asar 头解析：renderer/index.html ✓、renderer/debug.html ✓、out/main/in
                （`content.js` 的命中全在 node_modules/openai 里）
 ```
 
-**发现一个打磨缺口（未修）**：`default Electron icon is used  reason=application icon is not set` ——
-应用没有设图标，AppImage 里是 Electron 默认图标。不影响功能，但属于「精致」范围。
+**发现一个打磨缺口（已修）**：`default Electron icon is used  reason=application icon is not set` ——
+应用当时没设图标。现已接上：`build/icon.png`（512×512，产图脚本 `scripts/make-icon.py`，可复现）
++ `electron-builder.yml` 的 `linux.icon` 与 `extraResources`（显式 `to: icon.png`）
++ 运行时的 `BrowserWindow.icon`（`src/main/index.ts` 的 `appIconPath()`，dev 读仓库、打包读 `resources/`）。
+实测：AppImage 里 `.desktop` 为 `Icon=mono-space` → `usr/share/icons/hicolor/512x512/apps/mono-space.png`
+（采样颜色确认是自产图标）、打包日志**不再有**默认图标告警。
+未竟之处：窗口级 `_NET_WM_ICON` 在这台 Cinnamon 上仍为空（Electron/X11 行为，非路径问题 ——
+dev 与打包版都为 2 字节空值，而两条路径的文件都已按存在性核对）；用户实际看到的菜单/任务栏图标来自 `.desktop`。
 
 electron-builder 另报了 `missing optional dependencies [@esbuild/*]`：pnpm 10+ 不自动装传递平台二进制；
 这些是**构建期**依赖，运行期不用，实测产物可跑，故无害。
