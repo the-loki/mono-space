@@ -26,9 +26,6 @@ export const MAX_PRESERVED_NAVIGATIONS = 3
 /** 无显式分页参数时的默认页大小（对齐 Chrome MCP）。 */
 export const DEFAULT_PAGE_SIZE = 20
 
-/** 详情里内联正文的字符上限（对齐 Chrome MCP）。 */
-export const BODY_CONTEXT_SIZE_LIMIT = 10_000
-
 /** 栈帧上限（对齐 Chrome MCP：最多 50 帧，其余折叠成一行）。 */
 const MAX_STACK_FRAMES = 50
 

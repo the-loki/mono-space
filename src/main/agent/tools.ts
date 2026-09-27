@@ -61,7 +61,6 @@ export interface KeyUpsertEntry {
   code?: string | null
   /** 从页面读到的揭示状态。 */
   revealed?: boolean
-  note?: string
 }
 
 /**
@@ -266,7 +265,6 @@ function createDomainTools(host: McpHost): ToolSpec[] {
             keyId: Type.Integer({ minimum: 1 }),
             code: Type.Optional(Type.Union([Type.String(), Type.Null()])),
             revealed: Type.Optional(Type.Boolean()),
-            note: Type.Optional(Type.String()),
           }),
           { minItems: 1, maxItems: 500 },
         ),

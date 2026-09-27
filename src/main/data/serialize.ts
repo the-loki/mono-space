@@ -55,37 +55,6 @@ const _csvColumnsCoverExportRow: MissingCsvColumn extends never
   ? true
   : ['CSV 缺少列', MissingCsvColumn] = true
 
-/** 把嵌套订单展平成导出行。 */
-export function ordersToRows(orders: readonly SyncedOrder[], accountId: string): LedgerExportRow[] {
-  const rows: LedgerExportRow[] = []
-  for (const order of orders) {
-    for (const bundle of order.bundles) {
-      for (const key of bundle.keys) {
-        rows.push({
-          accountId,
-          orderRemoteId: order.remoteId,
-          orderProductName: order.productName ?? null,
-          orderPurchasedAt: order.purchasedAt ?? null,
-          orderCurrency: order.currency ?? null,
-          bundleRemoteId: bundle.remoteId,
-          bundleName: bundle.name ?? null,
-          publisher: bundle.publisher ?? null,
-          keyRemoteId: key.remoteId,
-          keyName: key.name ?? null,
-          keyType: key.keyType ?? null,
-          revealStatus: key.revealStatus ?? 'unrevealed',
-          revealedAt: key.revealedAt ?? null,
-          redeemStatus: key.redeemStatus ?? 'not_redeemed',
-          redeemedAt: key.redeemedAt ?? null,
-          redeemCode: key.redeemCode ?? null,
-          platform: key.platform ?? 'unknown',
-        })
-      }
-    }
-  }
-  return rows
-}
-
 /** 把扁平导出行还原成嵌套订单（保持出现顺序）。 */
 export function rowsToOrders(rows: readonly LedgerExportRow[]): SyncedOrder[] {
   const orders = new Map<string, SyncedOrder>()

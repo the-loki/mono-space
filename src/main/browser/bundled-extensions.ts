@@ -24,8 +24,3 @@ export function ensureBundledExtensions(storeSession: Session): Promise<void> {
   }
   return loading
 }
-
-/** 仅供测试断言「是否已装过」。 */
-export function resetBundledExtensions(): void {
-  loading = null
-}

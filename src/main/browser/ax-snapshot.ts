@@ -18,30 +18,8 @@ export interface PageAxSnapshot extends PruneResult {
   title: string
 }
 
-/**
- * 给 MCP 用的**紧凑**快照结果：只带渲染文本与元信息，**不带嵌套 tree**。
- * （联调踩到：把 tree 一起回给 MCP，单次响应 91.8KB，直接爆掉上下文。）
- */
-export interface CompactAxSnapshot {
-  url: string
-  title: string
-  text: string
-  nodeCount: number
-  truncated: boolean
-}
-
 /** 快照里的可交互引用（agent 用 `uid` 做后续 click/fill）。 */
 export type { AxRef }
-
-export function toCompactSnapshot(snapshot: PageAxSnapshot): CompactAxSnapshot {
-  return {
-    url: snapshot.url,
-    title: snapshot.title,
-    text: snapshot.text,
-    nodeCount: snapshot.nodeCount,
-    truncated: snapshot.truncated,
-  }
-}
 
 /** 确保 debugger 已附着（同一窗口重复调用安全）。 */
 function attach(window: BrowserWindow): void {
